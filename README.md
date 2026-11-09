@@ -9,7 +9,7 @@ resources.
 
 ## Development
 
-Requirements: Go 1.25+ and Node.js 22+.
+Requirements: Go 1.25+ and Node.js 26 (see `.nvmrc`; run `nvm use`).
 
 ```bash
 make run                 # build everything and run on mock data at http://localhost:8080
