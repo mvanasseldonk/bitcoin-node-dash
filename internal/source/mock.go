@@ -4,13 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	"github.com/mvanasseldonk/bitcoin-node-dash/internal/model"
 )
 
 // Scenarios supported by the mock source. They match the states in the design.
-var Scenarios = []string{"healthy", "syncing", "warning", "error", "unreachable"}
+// "stale" answers once and then hangs, like a stuck poller: the dashboard
+// keeps serving the first snapshot while it grows older.
+var Scenarios = []string{"healthy", "syncing", "warning", "error", "unreachable", "stale"}
 
 // ErrMockUnreachable is returned by the mock source in the "unreachable" scenario.
 var ErrMockUnreachable = errors.New("mock: node unreachable")
@@ -25,6 +28,7 @@ const (
 type Mock struct {
 	scenario string
 	now      func() time.Time
+	fetched  atomic.Bool
 }
 
 // NewMock returns a mock source for the given scenario.
@@ -44,6 +48,9 @@ func (m *Mock) Fetch(ctx context.Context) (*model.NodeData, error) {
 	}
 	if m.scenario == "unreachable" {
 		return nil, ErrMockUnreachable
+	}
+	if m.scenario == "stale" && m.fetched.Swap(true) {
+		select {} // hang forever, ignoring ctx, to simulate a stuck source
 	}
 
 	now := m.now()

@@ -103,7 +103,7 @@ All settings are environment variables. The defaults work for a local Bitcoin Co
 | `BITCOIN_RPC_COOKIE`   | `$BITCOIN_DATADIR/.cookie` | Cookie file for RPC authentication (re-read on every call, so restarts are handled) |
 | `BITCOIN_RPC_USER`     | _(empty)_                  | RPC user; when set, used instead of the cookie file                                 |
 | `BITCOIN_RPC_PASSWORD` | _(empty)_                  | RPC password for `BITCOIN_RPC_USER`                                                 |
-| `NODEDASH_MOCK`        | _(empty)_                  | Run on mock data: `healthy`, `syncing`, `warning`, `error` or `unreachable`         |
+| `NODEDASH_MOCK`        | _(empty)_                  | Run on mock data: `healthy`, `syncing`, `warning`, `error`, `unreachable` or `stale` |
 
 ## Troubleshooting
 
@@ -140,7 +140,7 @@ Requirements: Go 1.26+ and Node.js 26 (see `.nvmrc`; run `nvm use`).
 
 ```bash
 make run                 # build everything and run on mock data at http://localhost:8080
-make run MOCK=warning    # other scenarios: healthy, syncing, warning, error, unreachable
+make run MOCK=warning    # other scenarios: healthy, syncing, warning, error, unreachable, stale
 make run MOCK=           # connect to Bitcoin Core instead (see Configuration)
 make test                # Go tests + frontend type check
 make lint                # gofmt + go vet
@@ -159,6 +159,9 @@ cd web && npm run dev                          # UI on :5173, proxies /api to :8
 - `internal/poller` fetches node data every 10 seconds with a 5 second timeout and caches it,
   so every open browser tab reads the same snapshot (`GET /api/status`) instead of hitting the node.
 - When the node can't be reached, the last known data is kept and the status becomes *Unreachable*.
+- The browser refreshes every 10 seconds, and right away when you return to the tab. Data older than
+  30 seconds is dimmed and marked as last known values. Ages are measured on the server's clock
+  (`serverTime` in `/api/status`), so a browser with a wrong clock still shows them correctly.
 - `GET /healthz` reports whether the dashboard itself is running; `node-dash healthcheck` calls it
   (used by the Docker `HEALTHCHECK`).
 

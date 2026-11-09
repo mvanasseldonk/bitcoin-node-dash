@@ -28,7 +28,7 @@ export function formatBytes(bytes: number): string {
   return `${Math.round(bytes / 1e6)} MB`
 }
 
-/** Local time as "21:14". */
-export function clockTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+/** Local time as "21:14", from an ISO string or epoch milliseconds. */
+export function clockTime(t: string | number): string {
+  return new Date(t).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
 }

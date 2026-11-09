@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 	"testing/fstest"
+	"time"
 
 	"github.com/mvanasseldonk/bitcoin-node-dash/internal/model"
 )
@@ -30,6 +31,9 @@ func TestStatusEndpoint(t *testing.T) {
 	}
 	if !got.Reachable || got.Health.Level != model.Healthy {
 		t.Fatalf("unexpected body: %+v", got)
+	}
+	if d := time.Since(got.ServerTime); d < 0 || d > time.Minute {
+		t.Fatalf("serverTime = %v, want about now", got.ServerTime)
 	}
 }
 

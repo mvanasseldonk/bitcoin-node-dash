@@ -12,7 +12,7 @@ web:
 build: web
 	go build -trimpath -o bin/node-dash ./cmd/node-dash
 
-## run: build and run on mock data (MOCK=healthy|warning|error|unreachable)
+## run: build and run on mock data (MOCK=healthy|syncing|warning|error|unreachable|stale)
 run: build
 	NODEDASH_MOCK=$(MOCK) ./bin/node-dash
 
