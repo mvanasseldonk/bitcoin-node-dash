@@ -1,6 +1,6 @@
 # 1. How the dashboard controls bitcoind
 
-- **Status:** proposed. Verify on the real node before building #10, see [Verification](#verification).
+- **Status:** accepted. Verified on the first node, see [Findings](#findings-on-the-first-node-2026-11-09).
 - **Date:** 2026-11-09
 - **Issue:** #9, for #10 (stop / start / restart) and #13 (settings form)
 
@@ -171,4 +171,12 @@ systemctl cat bitcoind.service | grep -E '^(Type|User|Restart|ExecStart|ExecStop
   chainstate and force a long reindex. That risk exists today on every reboot, regardless of the dashboard.
   - **Fix:** add a drop-in with `TimeoutStopSec=600`, the value the contrib unit uses.
   - **For #10:** the dashboard must check this timeout, and warn about it before it offers stop or restart.
-- **Permission check:** use `pkcheck` to test the rule without restarting the node.
+- **Permission check:** `pkcheck` tests the rule without restarting the node. Passing details such as `unit`
+  and `verb` is only allowed for root, so root asks on behalf of the user's own shell process:
+
+  ```bash
+  for unit in bitcoind.service ssh.service; do sudo pkcheck --action-id org.freedesktop.systemd1.manage-units --process $$ --detail unit $unit --detail verb restart >/dev/null 2>&1; echo "$unit: exit=$?"; done
+  ```
+
+  The result: `bitcoind.service: exit=0` (allowed by the rule) and `ssh.service: exit=2` (only with an admin
+  password). The rule is scoped as intended. `install.sh` can use the same check after installing the rule.
