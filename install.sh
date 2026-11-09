@@ -178,7 +178,9 @@ else
 fi
 
 if [ "$WRITE_UNIT" = yes ]; then
-	[ -n "$SVC_USER" ] && [ -n "$SVC_DATADIR" ] || fail "couldn't determine the service user and data directory"
+	if [ -z "$SVC_USER" ] || [ -z "$SVC_DATADIR" ]; then
+		fail "couldn't determine the service user and data directory"
+	fi
 	SVC_GROUP=$(id -gn "$SVC_USER")
 	sed -e "s|^User=.*|User=$SVC_USER|" \
 		-e "s|^Group=.*|Group=$SVC_GROUP|" \
@@ -235,7 +237,7 @@ say "node-dash $VERSION is running: http://${IP:-<this-server>}:$PORT"
 say "Logs: journalctl -u node-dash -f"
 
 if command -v ufw >/dev/null 2>&1 && $SUDO ufw status 2>/dev/null | grep -q '^Status: active'; then
-	if ! $SUDO ufw status 2>/dev/null | grep -q "^$PORT[/ ]"; then
+	if ! $SUDO ufw status 2>/dev/null | grep -q "^${PORT}[/ ]"; then
 		say "The ufw firewall is active and has no rule for port $PORT yet. To open it for your network:"
 		say "  sudo ufw allow from ${IP%.*}.0/24 to any port $PORT proto tcp"
 	fi
