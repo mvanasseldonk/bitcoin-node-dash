@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io/fs"
 	"net/http"
+	"time"
 
 	"github.com/mvanasseldonk/bitcoin-node-dash/internal/model"
 )
@@ -22,7 +23,9 @@ func New(snaps SnapshotProvider, static fs.FS) http.Handler {
 	mux.HandleFunc("GET /api/status", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "no-store")
-		_ = json.NewEncoder(w).Encode(snaps.Snapshot())
+		snap := snaps.Snapshot()
+		snap.ServerTime = time.Now()
+		_ = json.NewEncoder(w).Encode(snap)
 	})
 
 	// healthz reports whether the dashboard itself is running,

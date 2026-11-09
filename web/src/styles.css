@@ -234,7 +234,8 @@ body {
 }
 
 /* Last known values while the node (or dashboard server) is unreachable */
-.stale .tiles {
+.stale .tiles,
+.hero-stale .circle {
   opacity: 0.45;
 }
 .stale-caption {

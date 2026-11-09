@@ -61,4 +61,7 @@ type Snapshot struct {
 	Reachable bool      `json:"reachable"`
 	Health    Health    `json:"health"`
 	Data      *NodeData `json:"data"`
+	// ServerTime is the dashboard server's clock when the snapshot was served.
+	// Browsers use it to measure data age without trusting their own clock.
+	ServerTime time.Time `json:"serverTime"`
 }
