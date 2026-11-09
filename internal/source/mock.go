@@ -10,7 +10,7 @@ import (
 )
 
 // Scenarios supported by the mock source. They match the states in the design.
-var Scenarios = []string{"healthy", "warning", "error", "unreachable"}
+var Scenarios = []string{"healthy", "syncing", "warning", "error", "unreachable"}
 
 // ErrMockUnreachable is returned by the mock source in the "unreachable" scenario.
 var ErrMockUnreachable = errors.New("mock: node unreachable")
@@ -60,6 +60,12 @@ func (m *Mock) Fetch(ctx context.Context) (*model.NodeData, error) {
 	}
 
 	switch m.scenario {
+	case "syncing":
+		d.Blockchain.Blocks = 850_000
+		d.Blockchain.VerificationProgress = 0.87
+		d.Blockchain.InitialBlockDownload = true
+		d.Blockchain.LastBlockTime = now.Add(-2 * 365 * 24 * time.Hour)
+		d.Server.DiskFreeBytes = 1_340 * gb
 	case "warning":
 		d.Blockchain.LastBlockTime = now.Add(-74 * time.Minute)
 		d.Server.DiskFreeBytes = 152 * gb

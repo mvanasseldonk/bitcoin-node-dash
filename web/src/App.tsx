@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'preact/hooks'
 import { fetchStatus, type Level, type Snapshot } from './api'
-import { ago, isZeroTime } from './format'
+import { ago, clockTime, isZeroTime } from './format'
+import { Tiles } from './tiles'
 
 const REFRESH_MS = 10_000
 
@@ -63,7 +64,10 @@ export function App() {
     subline = 'Can’t reach bitcoin node · retrying'
   } else if (snap?.data && reasons.length === 0) {
     const { network, blockchain } = snap.data
-    subline = `Fully synced · ${network.outbound + network.inbound} peers · last block ${ago(blockchain.lastBlockTime, now)}`
+    const peers = `${network.outbound + network.inbound} peers`
+    subline = blockchain.initialBlockDownload
+      ? `Syncing ${Math.floor(blockchain.verificationProgress * 100)}% · ${peers}`
+      : `Fully synced · ${peers} · last block ${ago(blockchain.lastBlockTime, now)}`
   }
 
   const fresh = snap && !serverDown && snap.reachable
@@ -99,6 +103,13 @@ export function App() {
             subline && <p class="subline">{subline}</p>
           )}
         </section>
+
+        {snap?.data && (
+          <div class={fresh ? '' : 'stale'}>
+            {!fresh && <p class="stale-caption">Last known values {'·'} {clockTime(snap.updatedAt)}</p>}
+            <Tiles data={snap.data} now={now} />
+          </div>
+        )}
       </main>
     </div>
   )

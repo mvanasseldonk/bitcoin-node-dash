@@ -157,6 +157,92 @@ body {
   gap: 10px;
 }
 
+/* Tiles */
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+}
+
+.tile {
+  background: var(--surface);
+  border-radius: 24px;
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tile-title {
+  margin: 0 0 4px;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.tile-big {
+  font-family: var(--font-display);
+  font-size: 34px;
+  font-weight: 500;
+  letter-spacing: -0.68px;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+}
+
+.tile-line {
+  color: var(--muted);
+}
+.tile-line.small {
+  font-size: 14px;
+}
+
+.halves {
+  display: flex;
+  gap: 20px;
+}
+.half {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.half-divider {
+  width: 1px;
+  background: var(--line);
+}
+.half-count {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.half-label {
+  font-weight: 500;
+}
+
+.tone-neutral {
+  color: var(--ink);
+}
+.tone-muted {
+  color: var(--muted);
+}
+.tone-warning {
+  color: var(--warning);
+}
+.tone-error {
+  color: var(--error);
+}
+
+/* Last known values while the node (or dashboard server) is unreachable */
+.stale .tiles {
+  opacity: 0.45;
+}
+.stale-caption {
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .circle {
     transition: none;
