@@ -1,0 +1,52 @@
+name: Release
+
+# Pushing a tag like v0.1.0 creates a GitHub Release with ready-to-run
+# binaries for Linux and macOS. The Docker workflow publishes the image.
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  binaries:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable
+
+      - name: Build frontend
+        run: make web
+
+      - name: Build binaries
+        run: |
+          set -euo pipefail
+          mkdir -p dist build
+          for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
+            os=${target%/*}; arch=${target#*/}
+            name="node-dash_${GITHUB_REF_NAME}_${os}_${arch}"
+            mkdir -p "build/$name"
+            CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -trimpath \
+              -ldflags "-s -w -X main.version=${GITHUB_REF_NAME}" \
+              -o "build/$name/node-dash" ./cmd/node-dash
+            cp LICENSE README.md deploy/node-dash.service "build/$name/"
+            tar -czf "dist/$name.tar.gz" -C build "$name"
+          done
+          (cd dist && sha256sum *.tar.gz > checksums.txt)
+          ls -la dist
+
+      - uses: softprops/action-gh-release@v3
+        with:
+          files: dist/*
+          generate_release_notes: true
