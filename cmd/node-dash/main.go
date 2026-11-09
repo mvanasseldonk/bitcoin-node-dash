@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -24,7 +25,37 @@ const (
 	fetchTimeout = 5 * time.Second
 )
 
+// version is set at build time with -ldflags "-X main.version=v1.2.3".
+var version = "dev"
+
+const usage = `Usage: node-dash [command]
+
+Commands:
+  (none)       run the dashboard
+  healthcheck  exit 0 if the dashboard on NODEDASH_LISTEN responds (for Docker HEALTHCHECK)
+  version      print the version
+
+Configuration is read from environment variables; see the README.
+`
+
 func main() {
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "version", "--version", "-v":
+			fmt.Println(version)
+			return
+		case "healthcheck":
+			if err := healthcheck(envOr("NODEDASH_LISTEN", ":8080")); err != nil {
+				fmt.Fprintln(os.Stderr, "unhealthy:", err)
+				os.Exit(1)
+			}
+			return
+		default:
+			fmt.Fprint(os.Stderr, usage)
+			os.Exit(2)
+		}
+	}
+
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	if err := run(log); err != nil {
 		log.Error("fatal", "err", err)
@@ -32,8 +63,27 @@ func main() {
 	}
 }
 
+// healthcheck asks the locally running dashboard whether it is up.
+func healthcheck(listen string) error {
+	_, port, err := net.SplitHostPort(listen)
+	if err != nil {
+		return fmt.Errorf("parse NODEDASH_LISTEN %q: %w", listen, err)
+	}
+	client := &http.Client{Timeout: 3 * time.Second}
+	resp, err := client.Get("http://" + net.JoinHostPort("127.0.0.1", port) + "/healthz")
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("healthz returned HTTP %d", resp.StatusCode)
+	}
+	return nil
+}
+
 func run(log *slog.Logger) error {
 	listen := envOr("NODEDASH_LISTEN", ":8080")
+	log.Info("starting node-dash", "version", version)
 
 	src, err := newSource(log)
 	if err != nil {

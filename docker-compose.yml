@@ -1,0 +1,35 @@
+# bitcoin-node-dash: example for a Bitcoin Core node running on the same host.
+#
+#   docker compose up -d
+#
+# Then open http://<your-server>:8080 on your LAN. See the README for other setups.
+services:
+  node-dash:
+    image: ghcr.io/mvanasseldonk/bitcoin-node-dash:latest
+    container_name: node-dash
+    restart: unless-stopped
+
+    # Host networking lets the dashboard reach Bitcoin Core's RPC on
+    # 127.0.0.1:8332, without opening RPC to other machines.
+    # The dashboard listens on port 8080 of the host.
+    network_mode: host
+
+    # Run as the user that owns your Bitcoin data directory, so the dashboard
+    # can read the RPC cookie file. Find it with: stat -c '%u:%g' ~/.bitcoin
+    user: "1000:1000"
+
+    volumes:
+      # Your Bitcoin data directory, read-only: used for the RPC cookie and
+      # to measure free disk space.
+      - ~/.bitcoin:/bitcoin:ro
+
+    environment:
+      NODEDASH_LISTEN: ":8080"
+      # BITCOIN_RPC_URL: "http://127.0.0.1:8332"
+      # Use RPC user/password instead of the cookie file:
+      # BITCOIN_RPC_USER: "dashboard"
+      # BITCOIN_RPC_PASSWORD: "change-me"
+
+    # Hard caps; the dashboard normally uses far less.
+    mem_limit: 128m
+    cpus: 0.5

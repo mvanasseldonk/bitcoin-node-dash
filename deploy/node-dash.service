@@ -1,0 +1,32 @@
+# systemd unit for running the node-dash binary directly on the host.
+#
+#   sudo install -m 0755 node-dash /usr/local/bin/node-dash
+#   sudo cp node-dash.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now node-dash
+#
+# Adjust User/Group and BITCOIN_DATADIR to match your Bitcoin Core setup.
+
+[Unit]
+Description=bitcoin-node-dash dashboard
+After=network-online.target bitcoind.service
+Wants=network-online.target
+
+[Service]
+User=bitcoin
+Group=bitcoin
+Environment=NODEDASH_LISTEN=:8080
+Environment=BITCOIN_DATADIR=/home/bitcoin/.bitcoin
+# Environment=BITCOIN_RPC_URL=http://127.0.0.1:8332
+ExecStart=/usr/local/bin/node-dash
+Restart=always
+RestartSec=5
+
+# Hardening: the dashboard only needs to read the data directory.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+MemoryMax=128M
+
+[Install]
+WantedBy=multi-user.target
