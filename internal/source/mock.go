@@ -13,7 +13,9 @@ import (
 // Scenarios supported by the mock source. They match the states in the design.
 // "stale" answers once and then hangs, like a stuck poller: the dashboard
 // keeps serving the first snapshot while it grows older.
-var Scenarios = []string{"healthy", "syncing", "warning", "error", "unreachable", "starting", "stale"}
+// "outdated" runs a Bitcoin Core version that no longer gets security fixes;
+// in mock mode, the latest release is 32.1.
+var Scenarios = []string{"healthy", "syncing", "warning", "error", "unreachable", "starting", "stale", "outdated"}
 
 // ErrMockUnreachable is returned by the mock source in the "unreachable" scenario.
 var ErrMockUnreachable = errors.New("mock: node unreachable")
@@ -65,8 +67,9 @@ func (m *Mock) Fetch(ctx context.Context) (*model.NodeData, error) {
 			VerificationProgress: 0.99999,
 			LastBlockTime:        now.Add(-4 * time.Minute),
 		},
-		Network: model.Network{Outbound: 10, Inbound: 6},
-		Server:  model.Server{DiskFreeBytes: 812 * gb, DiskTotalBytes: 2 * tb},
+		Network:  model.Network{Outbound: 10, Inbound: 6},
+		Server:   model.Server{DiskFreeBytes: 812 * gb, DiskTotalBytes: 2 * tb},
+		Software: ParseSoftware(320100, "/Satoshi:32.1.0/"),
 	}
 
 	switch m.scenario {
@@ -79,8 +82,12 @@ func (m *Mock) Fetch(ctx context.Context) (*model.NodeData, error) {
 	case "warning":
 		d.Blockchain.LastBlockTime = now.Add(-74 * time.Minute)
 		d.Server.DiskFreeBytes = 38 * gb
+		// A newer release is available: information, no attention.
+		d.Software = ParseSoftware(320000, "/Satoshi:32.0.0/")
 	case "error":
 		d.Network = model.Network{Outbound: 0, Inbound: 0}
+	case "outdated":
+		d.Software = ParseSoftware(280100, "/Satoshi:28.1.0/")
 	}
 	return d, nil
 }

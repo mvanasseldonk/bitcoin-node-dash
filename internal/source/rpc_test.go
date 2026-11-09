@@ -45,7 +45,7 @@ func fakeCore(t *testing.T, user, pass string, results map[string]string) *httpt
 
 var okResults = map[string]string{
 	"getblockchaininfo": `{"chain":"main","blocks":977412,"headers":977412,"verificationprogress":0.99999,"initialblockdownload":false,"time":1794200000}`,
-	"getnetworkinfo":    `{"connections":16,"connections_in":6,"connections_out":10}`,
+	"getnetworkinfo":    `{"version":320100,"subversion":"/Satoshi:32.1.0/","connections":16,"connections_in":6,"connections_out":10}`,
 }
 
 func TestRPCFetchWithCookie(t *testing.T) {
@@ -76,6 +76,9 @@ func TestRPCFetchWithCookie(t *testing.T) {
 	}
 	if d.Server.DiskFreeBytes != 812 || d.Server.DiskTotalBytes != 2000 {
 		t.Errorf("server = %+v", d.Server)
+	}
+	if d.Software.Label != "Bitcoin Core 32.1" {
+		t.Errorf("software = %+v", d.Software)
 	}
 }
 

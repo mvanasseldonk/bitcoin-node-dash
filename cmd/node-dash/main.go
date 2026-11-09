@@ -18,6 +18,7 @@ import (
 	"github.com/mvanasseldonk/bitcoin-node-dash/internal/control"
 	"github.com/mvanasseldonk/bitcoin-node-dash/internal/model"
 	"github.com/mvanasseldonk/bitcoin-node-dash/internal/poller"
+	"github.com/mvanasseldonk/bitcoin-node-dash/internal/release"
 	"github.com/mvanasseldonk/bitcoin-node-dash/internal/server"
 	"github.com/mvanasseldonk/bitcoin-node-dash/internal/source"
 	"github.com/mvanasseldonk/bitcoin-node-dash/web"
@@ -97,6 +98,17 @@ func run(log *slog.Logger) error {
 	defer stop()
 
 	p := poller.New(src, pollInterval, fetchTimeout, log)
+	switch {
+	case os.Getenv("NODEDASH_MOCK") != "":
+		p.UseReleases(release.Fixed{Major: 32, Minor: 1})
+	case os.Getenv("NODEDASH_UPDATE_CHECK") == "0":
+		log.Info("update check off: no upgrade advice")
+	default:
+		// Once a day, ask GitHub for the latest Bitcoin Core release (story #24).
+		checker := release.NewChecker(version, log)
+		go checker.Run(ctx)
+		p.UseReleases(checker)
+	}
 	go p.Run(ctx)
 
 	var opts []server.Option

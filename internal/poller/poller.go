@@ -12,6 +12,7 @@ import (
 
 	"github.com/mvanasseldonk/bitcoin-node-dash/internal/health"
 	"github.com/mvanasseldonk/bitcoin-node-dash/internal/model"
+	"github.com/mvanasseldonk/bitcoin-node-dash/internal/release"
 	"github.com/mvanasseldonk/bitcoin-node-dash/internal/source"
 )
 
@@ -29,6 +30,9 @@ type Poller struct {
 	timeout    time.Duration
 	log        *slog.Logger
 	now        func() time.Time
+	// releases tells the latest Bitcoin Core release, for upgrade advice;
+	// nil when the update check is off.
+	releases release.Latest
 
 	mu   sync.RWMutex
 	snap model.Snapshot
@@ -50,6 +54,12 @@ func New(src source.Source, interval, timeout time.Duration, log *slog.Logger) *
 		now:        time.Now,
 		snap:       model.Snapshot{Health: health.Unreachable()},
 	}
+}
+
+// UseReleases sets where the latest Bitcoin Core release comes from, for the
+// upgrade advice. Call it before Run.
+func (p *Poller) UseReleases(l release.Latest) {
+	p.releases = l
 }
 
 // Run polls immediately and then every interval (longer while the node is
@@ -116,6 +126,7 @@ func (p *Poller) Poll(ctx context.Context) {
 	}
 	p.snap.Reachable = true
 	p.snap.UpdatedAt = now
+	data.Upgrade = release.Advise(data.Software, p.releases)
 	p.snap.Data = data
 	p.snap.Health = health.Evaluate(data, now)
 }

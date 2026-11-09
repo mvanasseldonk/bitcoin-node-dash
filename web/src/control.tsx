@@ -161,6 +161,8 @@ export function PowerButton({ onClick }: { onClick: () => void }) {
 }
 
 interface SheetProps {
+  /** The node software, e.g. "Bitcoin Core 32.1", for the Version row. */
+  software: string | undefined
   ctrl: ControlState | null
   progress: Progress | null
   error: string
@@ -169,7 +171,7 @@ interface SheetProps {
   onClose: () => void
 }
 
-export function ControlSheet({ ctrl, progress, error, now, onRun, onClose }: SheetProps) {
+export function ControlSheet({ software, ctrl, progress, error, now, onRun, onClose }: SheetProps) {
   const [confirm, setConfirm] = useState<Action | null>(null)
   const dialog = useRef<HTMLDivElement>(null)
 
@@ -214,6 +216,10 @@ export function ControlSheet({ ctrl, progress, error, now, onRun, onClose }: She
           <div class="sheet-row">
             <dt>Uptime</dt>
             <dd>{uptime}</dd>
+          </div>
+          <div class="sheet-row">
+            <dt>Version</dt>
+            <dd>{software || '—'}</dd>
           </div>
         </dl>
 
