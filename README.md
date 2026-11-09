@@ -28,7 +28,7 @@ docker run -d --name node-dash --restart unless-stopped \
 Then open `http://<your-server>:8080` in a browser on your network.
 
 - `--network host` lets the dashboard reach Bitcoin Core's RPC on `127.0.0.1:8332`, without opening RPC to other machines.
-- `--user` runs the dashboard as the owner of your Bitcoin data directory, so it can read the RPC cookie file.
+- `--user` runs the dashboard as the owner of your Bitcoin data directory, so it can read the RPC cookie file (or `bitcoin.conf`).
 - `-v ~/.bitcoin:/bitcoin:ro` mounts your data directory read-only. Use your own path if your data lives elsewhere.
 
 Prefer Docker Compose? Download the example, check the `user` and volume path, and start it:
@@ -93,15 +93,26 @@ Check the archive against `checksums.txt` from the release with `sha256sum -c --
 
 ## Configuration
 
-All settings are environment variables. The defaults work for a local Bitcoin Core with cookie authentication.
+All settings are environment variables. The defaults work for a local Bitcoin Core, both with cookie
+authentication and with `rpcuser`/`rpcpassword` in `bitcoin.conf`.
+
+The dashboard looks for RPC credentials in this order:
+
+1. `BITCOIN_RPC_USER` and `BITCOIN_RPC_PASSWORD`, when set;
+2. `rpcuser` and `rpcpassword` in `bitcoin.conf` (the top of the file or its `[main]` section);
+3. the cookie file Bitcoin Core writes when no `rpcpassword` is set.
+
+`bitcoin.conf` and the cookie are re-read on every call, so changes and restarts of Bitcoin Core are picked up.
+The password is never logged.
 
 | Variable               | Default                    | Description                                                                         |
 | ---------------------- | -------------------------- | ----------------------------------------------------------------------------------- |
 | `NODEDASH_LISTEN`      | `:8080`                    | Address the dashboard listens on                                                    |
 | `BITCOIN_RPC_URL`      | `http://127.0.0.1:8332`    | Bitcoin Core JSON-RPC address                                                       |
-| `BITCOIN_DATADIR`      | `~/.bitcoin` (`/bitcoin` in Docker) | Bitcoin data directory; used for the cookie file and to measure free disk space |
-| `BITCOIN_RPC_COOKIE`   | `$BITCOIN_DATADIR/.cookie` | Cookie file for RPC authentication (re-read on every call, so restarts are handled) |
-| `BITCOIN_RPC_USER`     | _(empty)_                  | RPC user; when set, used instead of the cookie file                                 |
+| `BITCOIN_DATADIR`      | `~/.bitcoin` (`/bitcoin` in Docker) | Bitcoin data directory; used for `bitcoin.conf`, the cookie file and to measure free disk space |
+| `BITCOIN_CONF`         | `$BITCOIN_DATADIR/bitcoin.conf` | Bitcoin Core config file to read `rpcuser`/`rpcpassword` from                 |
+| `BITCOIN_RPC_COOKIE`   | `$BITCOIN_DATADIR/.cookie` | Cookie file for RPC authentication                                                  |
+| `BITCOIN_RPC_USER`     | _(empty)_                  | RPC user; when set, used instead of `bitcoin.conf` and the cookie file              |
 | `BITCOIN_RPC_PASSWORD` | _(empty)_                  | RPC password for `BITCOIN_RPC_USER`                                                 |
 | `NODEDASH_MOCK`        | _(empty)_                  | Run on mock data: `healthy`, `syncing`, `warning`, `error`, `unreachable` or `stale` |
 
@@ -116,7 +127,10 @@ The dashboard shows **Unreachable** and its log (`docker logs node-dash`) tells 
   the cookie lives in a subdirectory: set `BITCOIN_RPC_COOKIE`, e.g. `/bitcoin/signet/.cookie`.
 - **`connection refused`**: Bitcoin Core isn't running, or listens elsewhere. Check `BITCOIN_RPC_URL`;
   in Docker without host networking, `127.0.0.1` is the container itself.
-- **`rejected the RPC credentials`**: wrong `BITCOIN_RPC_USER` / `BITCOIN_RPC_PASSWORD`, or a stale cookie path.
+- **`rejected the RPC credentials`**: check where the credentials come from: the `auth=` field in the
+  startup log says it. Wrong `BITCOIN_RPC_USER` / `BITCOIN_RPC_PASSWORD`; or a stale `.cookie` left
+  behind after you set `rpcpassword` (delete it, or make sure `bitcoin.conf` is readable for the dashboard);
+  or Bitcoin Core uses a `bitcoin.conf` elsewhere (set `BITCOIN_CONF`).
 
 Run `docker exec node-dash /usr/local/bin/node-dash version` to see which version you're running.
 

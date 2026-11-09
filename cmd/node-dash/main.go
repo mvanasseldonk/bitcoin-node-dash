@@ -142,17 +142,15 @@ func newSource(log *slog.Logger) (source.Source, error) {
 	}
 	cfg := source.RPCConfig{
 		URL:        envOr("BITCOIN_RPC_URL", "http://127.0.0.1:8332"),
-		CookiePath: envOr("BITCOIN_RPC_COOKIE", filepath.Join(dataDir, ".cookie")),
 		User:       os.Getenv("BITCOIN_RPC_USER"),
 		Password:   os.Getenv("BITCOIN_RPC_PASSWORD"),
+		ConfPath:   envOr("BITCOIN_CONF", filepath.Join(dataDir, "bitcoin.conf")),
+		CookiePath: envOr("BITCOIN_RPC_COOKIE", filepath.Join(dataDir, ".cookie")),
 		DataDir:    dataDir,
 	}
-	auth := "cookie " + cfg.CookiePath
-	if cfg.User != "" {
-		auth = "user " + cfg.User
-	}
-	log.Info("using Bitcoin Core RPC", "url", cfg.URL, "auth", auth, "datadir", cfg.DataDir)
-	return source.NewRPC(cfg), nil
+	rpc := source.NewRPC(cfg)
+	log.Info("using Bitcoin Core RPC", "url", cfg.URL, "auth", rpc.AuthSource(), "datadir", cfg.DataDir)
+	return rpc, nil
 }
 
 func envOr(key, def string) string {

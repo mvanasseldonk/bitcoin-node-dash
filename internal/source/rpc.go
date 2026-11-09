@@ -22,12 +22,16 @@ var ErrUnauthorized = errors.New("bitcoin core rejected the RPC credentials (che
 type RPCConfig struct {
 	// URL of the JSON-RPC server, e.g. http://127.0.0.1:8332.
 	URL string
-	// CookiePath is the .cookie file Bitcoin Core writes on start.
-	// Used when User is empty. It is re-read on every call, because the
-	// cookie changes each time bitcoind restarts.
+	// User and Password, when User is set, are used as is.
+	User     string
+	Password string
+	// ConfPath is Bitcoin Core's bitcoin.conf. When User is empty and the
+	// file sets rpcuser and rpcpassword, those are used. Re-read on every call.
+	ConfPath string
+	// CookiePath is the .cookie file Bitcoin Core writes on start, used when
+	// neither of the above gives credentials. It is re-read on every call,
+	// because the cookie changes each time bitcoind restarts.
 	CookiePath string
-	User       string
-	Password   string
 	// DataDir is the Bitcoin data directory; its volume is used for disk usage.
 	// Optional: when empty or unreadable, disk usage is reported as unknown.
 	DataDir string
@@ -152,9 +156,32 @@ func (r *RPC) call(ctx context.Context, method string, out any) error {
 	return nil
 }
 
+// credentials returns the RPC credentials, in order of precedence: the
+// configured user, rpcuser/rpcpassword from bitcoin.conf, the cookie file.
+// bitcoin.conf comes before the cookie because Bitcoin Core writes no cookie
+// when rpcpassword is set, so a cookie next to it is a stale leftover.
+// AuthSource describes where the credentials currently come from, for the
+// log. It never includes the password.
+func (r *RPC) AuthSource() string {
+	if r.cfg.User != "" {
+		return "user " + r.cfg.User
+	}
+	if r.cfg.ConfPath != "" {
+		if user, _, ok := confCredentials(r.cfg.ConfPath); ok {
+			return "user " + user + " (" + r.cfg.ConfPath + ")"
+		}
+	}
+	return "cookie " + r.cfg.CookiePath
+}
+
 func (r *RPC) credentials() (user, pass string, err error) {
 	if r.cfg.User != "" {
 		return r.cfg.User, r.cfg.Password, nil
+	}
+	if r.cfg.ConfPath != "" {
+		if user, pass, ok := confCredentials(r.cfg.ConfPath); ok {
+			return user, pass, nil
+		}
 	}
 	b, err := os.ReadFile(r.cfg.CookiePath)
 	if err != nil {
