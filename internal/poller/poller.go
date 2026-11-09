@@ -4,6 +4,7 @@ package poller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -15,45 +16,67 @@ import (
 )
 
 // Poller periodically fetches node data from a Source.
+//
+// While the node can't be reached it backs off: the delay between attempts
+// doubles from interval up to maxBackoff, so a node that is down isn't
+// hammered while recovery is still noticed quickly. While the node is
+// starting up it keeps polling at interval, to show progress and the moment
+// it is ready.
 type Poller struct {
-	src      source.Source
-	interval time.Duration
-	timeout  time.Duration
-	log      *slog.Logger
-	now      func() time.Time
+	src        source.Source
+	interval   time.Duration
+	maxBackoff time.Duration
+	timeout    time.Duration
+	log        *slog.Logger
+	now        func() time.Time
 
 	mu   sync.RWMutex
 	snap model.Snapshot
 	// lastErr is the message of the error that was logged last, or "" while
 	// the node is reachable. Used to log each problem once instead of on every poll.
 	lastErr string
+	// failures counts consecutive failed polls, for the backoff.
+	failures int
 }
 
 // New returns a Poller. Call Run to start polling.
 func New(src source.Source, interval, timeout time.Duration, log *slog.Logger) *Poller {
 	return &Poller{
-		src:      src,
-		interval: interval,
-		timeout:  timeout,
-		log:      log,
-		now:      time.Now,
-		snap:     model.Snapshot{Health: health.Unreachable()},
+		src:        src,
+		interval:   interval,
+		maxBackoff: 3 * interval,
+		timeout:    timeout,
+		log:        log,
+		now:        time.Now,
+		snap:       model.Snapshot{Health: health.Unreachable()},
 	}
 }
 
-// Run polls immediately and then every interval, until ctx is cancelled.
+// Run polls immediately and then every interval (longer while the node is
+// unreachable, see Poller), until ctx is cancelled.
 func (p *Poller) Run(ctx context.Context) {
-	p.Poll(ctx)
-	t := time.NewTicker(p.interval)
-	defer t.Stop()
 	for {
+		p.Poll(ctx)
+		t := time.NewTimer(p.NextDelay())
 		select {
 		case <-ctx.Done():
+			t.Stop()
 			return
 		case <-t.C:
-			p.Poll(ctx)
 		}
 	}
+}
+
+// NextDelay returns how long to wait before the next poll.
+func (p *Poller) NextDelay() time.Duration {
+	p.mu.RLock()
+	n := p.failures
+	p.mu.RUnlock()
+	d := p.interval
+	for i := 1; i < n && d < p.maxBackoff; i++ {
+		d *= 2
+	}
+	return min(d, p.maxBackoff)
 }
 
 // Poll performs a single fetch and updates the cached snapshot.
@@ -66,15 +89,27 @@ func (p *Poller) Poll(ctx context.Context) {
 	defer p.mu.Unlock()
 	p.snap.CheckedAt = now
 	if err != nil {
-		// Log a problem once, and again only when its cause changes.
-		if msg := err.Error(); msg != p.lastErr {
-			p.log.Warn("node unreachable", "err", err)
-			p.lastErr = msg
-		}
 		p.snap.Reachable = false
+		// Log a problem once, and again only when its cause changes.
+		logNew := err.Error() != p.lastErr
+		p.lastErr = err.Error()
+		var starting *source.StartingError
+		if errors.As(err, &starting) {
+			p.failures = 0 // starting is progress: keep polling at the normal pace
+			p.snap.Health = health.Starting(starting.Status)
+			if logNew {
+				p.log.Info("node is starting", "status", starting.Status)
+			}
+			return // keep the last known data
+		}
+		p.failures++
 		p.snap.Health = health.Unreachable()
+		if logNew {
+			p.log.Warn("node unreachable", "err", err)
+		}
 		return // keep the last known data
 	}
+	p.failures = 0
 	if p.lastErr != "" {
 		p.log.Info("node reachable again")
 		p.lastErr = ""

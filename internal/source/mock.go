@@ -13,7 +13,7 @@ import (
 // Scenarios supported by the mock source. They match the states in the design.
 // "stale" answers once and then hangs, like a stuck poller: the dashboard
 // keeps serving the first snapshot while it grows older.
-var Scenarios = []string{"healthy", "syncing", "warning", "error", "unreachable", "stale"}
+var Scenarios = []string{"healthy", "syncing", "warning", "error", "unreachable", "starting", "stale"}
 
 // ErrMockUnreachable is returned by the mock source in the "unreachable" scenario.
 var ErrMockUnreachable = errors.New("mock: node unreachable")
@@ -48,6 +48,9 @@ func (m *Mock) Fetch(ctx context.Context) (*model.NodeData, error) {
 	}
 	if m.scenario == "unreachable" {
 		return nil, ErrMockUnreachable
+	}
+	if m.scenario == "starting" {
+		return nil, &StartingError{Status: "Loading block index…"}
 	}
 	if m.scenario == "stale" && m.fetched.Swap(true) {
 		select {} // hang forever, ignoring ctx, to simulate a stuck source

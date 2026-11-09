@@ -12,6 +12,9 @@ const (
 	Warning     Level = "warning"
 	Error       Level = "error"
 	Unreachable Level = "unreachable"
+	// Starting means Bitcoin Core answers but is still starting up
+	// (RPC warm-up: loading the block index, verifying blocks, ...).
+	Starting Level = "starting"
 )
 
 // NodeData is everything a data source returns on one successful fetch.

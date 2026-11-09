@@ -131,6 +131,17 @@ func TestDiskUsageOfTempDir(t *testing.T) {
 	}
 }
 
+func TestRPCStarting(t *testing.T) {
+	srv := fakeCore(t, "alice", "pw", map[string]string{"getblockchaininfo": "ERR:Loading block index…"})
+	defer srv.Close()
+	r := NewRPC(RPCConfig{URL: srv.URL, User: "alice", Password: "pw"})
+	_, err := r.Fetch(context.Background())
+	var se *StartingError
+	if !errors.As(err, &se) || se.Status != "Loading block index…" {
+		t.Fatalf("want StartingError with the status, got %v", err)
+	}
+}
+
 // TestRPCOnlyCheapCalls guards the polling loop against expensive RPC calls
 // (story #7): one fetch makes exactly these two lightweight calls.
 func TestRPCOnlyCheapCalls(t *testing.T) {

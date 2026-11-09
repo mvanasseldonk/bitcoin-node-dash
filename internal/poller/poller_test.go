@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/mvanasseldonk/bitcoin-node-dash/internal/model"
+	"github.com/mvanasseldonk/bitcoin-node-dash/internal/source"
 )
 
 type fakeSource struct {
@@ -141,5 +142,53 @@ func TestReachableFromStartLogsNoRecovery(t *testing.T) {
 	p.Poll(context.Background())
 	if strings.Contains(buf.String(), "reachable again") {
 		t.Fatalf("unexpected recovery message:\n%s", buf.String())
+	}
+}
+
+func TestStartingNode(t *testing.T) {
+	data := &model.NodeData{Blockchain: model.Blockchain{Blocks: 42}}
+	src := &fakeSource{data: data}
+	p := newTestPoller(src)
+	p.Poll(context.Background())
+
+	src.err = &source.StartingError{Status: "Verifying blocks…"}
+	p.Poll(context.Background())
+	p.Poll(context.Background())
+
+	s := p.Snapshot()
+	if s.Health.Level != model.Starting || len(s.Health.Reasons) != 1 || s.Health.Reasons[0] != "Verifying blocks…" {
+		t.Fatalf("want starting with the status as reason, got %+v", s.Health)
+	}
+	if s.Reachable || s.Data != data {
+		t.Fatalf("want last known data kept and not reachable, got %+v", s)
+	}
+	if d := p.NextDelay(); d != time.Second {
+		t.Fatalf("NextDelay while starting = %v, want the normal interval", d)
+	}
+}
+
+func TestBackoffWhileUnreachable(t *testing.T) {
+	src := &fakeSource{err: errors.New("connection refused")}
+	p := newTestPoller(src) // interval 1s, so backoff caps at 3s
+	if d := p.NextDelay(); d != time.Second {
+		t.Fatalf("before any poll: %v, want 1s", d)
+	}
+	var got []time.Duration
+	for range 5 {
+		p.Poll(context.Background())
+		got = append(got, p.NextDelay())
+	}
+	want := []time.Duration{time.Second, 2 * time.Second, 3 * time.Second, 3 * time.Second, 3 * time.Second}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("delays = %v, want %v", got, want)
+		}
+	}
+
+	// Back to the normal pace as soon as the node answers.
+	src.err, src.data = nil, &model.NodeData{}
+	p.Poll(context.Background())
+	if d := p.NextDelay(); d != time.Second {
+		t.Fatalf("after recovery: %v, want 1s", d)
 	}
 }

@@ -14,6 +14,13 @@ func TestMockScenarios(t *testing.T) {
 			t.Fatalf("%s: %v", s, err)
 		}
 		d, err := m.Fetch(context.Background())
+		if s == "starting" {
+			var se *StartingError
+			if !errors.As(err, &se) || se.Status == "" {
+				t.Fatalf("starting: want a StartingError, got %v", err)
+			}
+			continue
+		}
 		if s == "unreachable" {
 			if !errors.Is(err, ErrMockUnreachable) {
 				t.Fatalf("unreachable: want ErrMockUnreachable, got %v", err)
