@@ -15,10 +15,19 @@ type SnapshotProvider interface {
 	Snapshot() model.Snapshot
 }
 
+// Option adds optional endpoints to the dashboard.
+type Option func(mux *http.ServeMux)
+
 // New returns the HTTP handler for the dashboard.
 // static holds the built frontend (index.html and assets).
-func New(snaps SnapshotProvider, static fs.FS) http.Handler {
+func New(snaps SnapshotProvider, static fs.FS, opts ...Option) http.Handler {
 	mux := http.NewServeMux()
+	// Unknown API paths, and the control endpoints when control is off, are 404.
+	mux.HandleFunc("GET /api/", http.NotFound)
+	mux.HandleFunc("POST /api/", http.NotFound)
+	for _, opt := range opts {
+		opt(mux)
+	}
 
 	mux.HandleFunc("GET /api/status", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

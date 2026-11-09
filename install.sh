@@ -7,6 +7,9 @@
 #   VERSION=v0.2.0        install this release instead of the latest
 #   NODEDASH_USER=bitcoin run the dashboard as this user (default: the user that runs bitcoind)
 #   BITCOIN_DATADIR=/path Bitcoin data directory (default: detected, or ~/.bitcoin of that user)
+#   NODEDASH_CONTROL=1    let the dashboard stop, start and restart bitcoind (polkit rule);
+#                         NODEDASH_CONTROL=0 turns it off again (read the README first)
+#   BITCOIN_SERVICE=name  the systemd service of Bitcoin Core (default: bitcoind.service)
 #
 # Uninstall (never touches your Bitcoin data):
 #   curl -fsSL https://raw.githubusercontent.com/mvanasseldonk/bitcoin-node-dash/main/install.sh | sh -s -- --uninstall
@@ -18,6 +21,10 @@ BIN="/usr/local/bin/node-dash"
 UNIT="/etc/systemd/system/node-dash.service"
 STATE_DIR="/var/lib/node-dash-install"
 UNIT_HASH="$STATE_DIR/unit.sha256"
+# Node control (stop / start / restart bitcoind): a polkit rule and a drop-in.
+POLKIT_RULE="/etc/polkit-1/rules.d/50-node-dash.rules"
+CONTROL_DROPIN="/etc/systemd/system/node-dash.service.d/control.conf"
+BTC_SERVICE=${BITCOIN_SERVICE:-bitcoind.service}
 
 say() { printf '%s\n' "› $*"; }
 fail() {
@@ -31,7 +38,7 @@ case "${1:-}" in
 "") ACTION=install ;;
 --uninstall) ACTION=uninstall ;;
 -h | --help)
-	sed -n '2,13p' "$0" 2>/dev/null | sed 's/^# \{0,1\}//' || true
+	sed -n '2,17p' "$0" 2>/dev/null | sed 's/^# \{0,1\}//' || true
 	exit 0
 	;;
 *) fail "unknown option: $1 (use --uninstall, or no option to install or update)" ;;
@@ -56,7 +63,8 @@ fi
 if [ "$ACTION" = uninstall ]; then
 	say "Stopping and removing the node-dash service (your Bitcoin data is not touched)"
 	$SUDO systemctl disable --now node-dash >/dev/null 2>&1 || true
-	$SUDO rm -f "$UNIT" "$BIN"
+	$SUDO rm -f "$UNIT" "$BIN" "$POLKIT_RULE" "$CONTROL_DROPIN"
+	$SUDO rmdir "${CONTROL_DROPIN%/*}" 2>/dev/null || true
 	$SUDO rm -rf "$STATE_DIR"
 	$SUDO systemctl daemon-reload
 	if [ -e /etc/node-dash.env ]; then
@@ -65,6 +73,120 @@ if [ "$ACTION" = uninstall ]; then
 	say "node-dash is uninstalled"
 	exit 0
 fi
+
+# --- Node control --------------------------------------------------------------
+
+# configure_control writes or removes the polkit rule and the drop-in that
+# enable node control, per NODEDASH_CONTROL. It sets CONTROL_CHANGED=yes when
+# node-dash must restart. Without NODEDASH_CONTROL it leaves things as they are.
+CONTROL_CHANGED=no
+configure_control() {
+	case "${NODEDASH_CONTROL:-}" in
+	"") return 0 ;;
+	0)
+		if [ -e "$POLKIT_RULE" ] || [ -e "$CONTROL_DROPIN" ]; then
+			say "Turning node control off"
+			$SUDO rm -f "$POLKIT_RULE" "$CONTROL_DROPIN"
+			$SUDO rmdir "${CONTROL_DROPIN%/*}" 2>/dev/null || true
+			CONTROL_CHANGED=yes
+		fi
+		return 0
+		;;
+	1) ;;
+	*) fail "NODEDASH_CONTROL must be 1 (on) or 0 (off), got '$NODEDASH_CONTROL'" ;;
+	esac
+
+	systemctl cat "$BTC_SERVICE" >/dev/null 2>&1 ||
+		fail "node control needs Bitcoin Core as a systemd service, but '$BTC_SERVICE' doesn't exist; set BITCOIN_SERVICE to its name"
+	command -v pkaction >/dev/null 2>&1 ||
+		fail "node control needs polkit, which isn't installed. Install it (sudo apt install polkitd) and run this again"
+	pkver=$(pkaction --version 2>/dev/null | grep -o '[0-9][0-9.]*' | head -n 1)
+	case "$pkver" in
+	0.[0-9] | 0.[0-9].* | 0.[0-9][0-9] | 0.[0-9][0-9].* | 0.10[0-5] | 0.10[0-5].*)
+		fail "polkit $pkver is too old for node control (it needs rules in /etc/polkit-1/rules.d: polkit 0.106 or newer)"
+		;;
+	esac
+
+	user=$(systemctl show -p User --value node-dash)
+	[ -n "$user" ] || user=root
+	say "Node control: node-dash (user $user) may start, stop and restart $BTC_SERVICE"
+
+	cat >"$TMP/50-node-dash.rules" <<RULE
+// Written by the bitcoin-node-dash installer (NODEDASH_CONTROL=1).
+// Lets the dashboard start, stop and restart Bitcoin Core, and nothing else.
+polkit.addRule(function (action, subject) {
+  if (action.id === "org.freedesktop.systemd1.manage-units" &&
+      action.lookup("unit") === "$BTC_SERVICE" &&
+      ["start", "stop", "restart"].indexOf(action.lookup("verb")) >= 0 &&
+      subject.user === "$user") {
+    return polkit.Result.YES;
+  }
+});
+RULE
+	cat >"$TMP/control.conf" <<DROPIN
+# Written by the bitcoin-node-dash installer (NODEDASH_CONTROL=1).
+[Service]
+Environment=NODEDASH_CONTROL=1
+Environment=BITCOIN_SERVICE=$BTC_SERVICE
+DROPIN
+	for pair in "50-node-dash.rules:$POLKIT_RULE" "control.conf:$CONTROL_DROPIN"; do
+		src=$TMP/${pair%%:*}
+		dst=${pair#*:}
+		if ! cmp -s "$src" "$dst" 2>/dev/null; then
+			$SUDO mkdir -p "${dst%/*}"
+			$SUDO install -m 0644 "$src" "$dst"
+			CONTROL_CHANGED=yes
+		fi
+	done
+}
+
+# check_control asks polkit whether the running dashboard may restart bitcoind.
+check_control() {
+	[ "${NODEDASH_CONTROL:-}" = 1 ] || return 0
+	pid=$(systemctl show -p MainPID --value node-dash)
+	for _ in 1 2 3 4 5; do
+		# polkit picks up changed rules within a moment.
+		if $SUDO pkcheck --action-id org.freedesktop.systemd1.manage-units --process "$pid" \
+			--detail unit "$BTC_SERVICE" --detail verb restart >/dev/null 2>&1; then
+			say "Node control is on: polkit allows node-dash to control $BTC_SERVICE"
+			# systemd shows it as e.g. "1min 30s" or "infinity".
+			stop_timeout=$(systemctl show -p TimeoutStopUSec --value "$BTC_SERVICE")
+			secs=$(printf '%s\n' "$stop_timeout" | awk '{
+				t = 0
+				for (i = 1; i <= NF; i++) {
+					v = $i
+					if (v ~ /min$/) { sub(/min$/, "", v); t += v * 60 }
+					else if (v ~ /ms$|us$/) { }
+					else if (v ~ /h$/) { sub(/h$/, "", v); t += v * 3600 }
+					else if (v ~ /d$/) { sub(/d$/, "", v); t += v * 86400 }
+					else if (v ~ /s$/) { sub(/s$/, "", v); t += v }
+				}
+				print int(t)
+			}')
+			if [ "$stop_timeout" != infinity ] && [ "$secs" -lt 300 ]; then
+				say "Note: systemd force-stops $BTC_SERVICE after $stop_timeout, which can be too short for a clean"
+				say "shutdown. To allow 10 minutes, run: sudo systemctl edit $BTC_SERVICE, and add:"
+				say "  [Service]"
+				say "  TimeoutStopSec=600"
+			fi
+			return 0
+		fi
+		sleep 1
+	done
+	fail "polkit doesn't allow node-dash to control $BTC_SERVICE; check $POLKIT_RULE and: journalctl -u polkit -n 20"
+}
+
+# wait_healthy waits until the dashboard answers, and sets PORT.
+wait_healthy() {
+	listen=$(systemctl show -p Environment --value node-dash | tr ' ' '\n' | sed -n 's/^NODEDASH_LISTEN=//p' | head -n 1)
+	PORT=${listen##*:}
+	PORT=${PORT:-8080}
+	for _ in 1 2 3 4 5 6 7 8 9 10; do
+		curl -fsS -o /dev/null "http://127.0.0.1:$PORT/healthz" 2>/dev/null && return 0
+		sleep 1
+	done
+	fail "node-dash didn't start; see: journalctl -u node-dash -n 20 --no-pager"
+}
 
 # --- What to install ---------------------------------------------------------
 
@@ -88,15 +210,24 @@ CURRENT=""
 if [ -x "$BIN" ]; then
 	CURRENT=$("$BIN" version 2>/dev/null || true)
 fi
+TMP=$(mktemp -d)
+trap 'rm -rf "$TMP"' EXIT INT TERM
+
 if [ "$CURRENT" = "$VERSION" ] && [ -e "$UNIT" ]; then
-	say "node-dash $VERSION is already installed and up to date; nothing to do"
+	configure_control
+	if [ "$CONTROL_CHANGED" = no ]; then
+		say "node-dash $VERSION is already installed and up to date; nothing to do"
+		exit 0
+	fi
+	$SUDO systemctl daemon-reload
+	$SUDO systemctl restart node-dash
+	wait_healthy
+	check_control
+	say "node-dash $VERSION is running"
 	exit 0
 fi
 
 # --- Download and verify -----------------------------------------------------
-
-TMP=$(mktemp -d)
-trap 'rm -rf "$TMP"' EXIT INT TERM
 NAME="node-dash_${VERSION}_linux_${ARCH}"
 BASE="https://github.com/$REPO/releases/download/$VERSION"
 
@@ -211,26 +342,15 @@ else
 	say "Kept $UNIT as it is, because it was changed or installed by hand"
 fi
 $SUDO systemctl daemon-reload
+configure_control
+[ "$CONTROL_CHANGED" = no ] || $SUDO systemctl daemon-reload
 $SUDO systemctl enable node-dash >/dev/null 2>&1
 $SUDO systemctl restart node-dash
 
 # --- Check and tell where to find it -------------------------------------------
 
-listen=$(sed -n 's/^Environment=NODEDASH_LISTEN=//p' "$UNIT" | head -n 1)
-PORT=${listen##*:}
-PORT=${PORT:-8080}
-
-ok=no
-for _ in 1 2 3 4 5 6 7 8 9 10; do
-	if curl -fsS -o /dev/null "http://127.0.0.1:$PORT/healthz" 2>/dev/null; then
-		ok=yes
-		break
-	fi
-	sleep 1
-done
-if [ "$ok" = no ]; then
-	fail "node-dash didn't start; see: journalctl -u node-dash -n 20 --no-pager"
-fi
+wait_healthy
+check_control
 
 IP=$(hostname -I 2>/dev/null | awk '{ print $1 }')
 say "node-dash $VERSION is running: http://${IP:-<this-server>}:$PORT"

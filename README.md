@@ -150,6 +150,59 @@ The password is never logged.
 | `BITCOIN_RPC_USER`     | _(empty)_                  | RPC user; when set, used instead of `bitcoin.conf` and the cookie file              |
 | `BITCOIN_RPC_PASSWORD` | _(empty)_                  | RPC password for `BITCOIN_RPC_USER`                                                 |
 | `NODEDASH_MOCK`        | _(empty)_                  | Run on mock data: `healthy`, `syncing`, `warning`, `error`, `unreachable`, `starting` or `stale` |
+| `NODEDASH_CONTROL`     | _(empty)_                  | `1` turns on [node control](#node-control): stop, start and restart Bitcoin Core    |
+| `BITCOIN_SERVICE`      | `bitcoind.service`         | The systemd service of Bitcoin Core, for node control                               |
+| `NODEDASH_HOSTS`       | _(empty)_                  | Extra host names, comma separated, on which node control may be used (see below)    |
+
+## Node control
+
+The dashboard can stop, start and restart Bitcoin Core: the power button at the top right. It's **off by default**,
+because the dashboard has no login.
+
+> **Anyone who can open the dashboard can stop your node.** Only turn this on when the dashboard is reachable
+> from your own home network, never from the internet.
+
+It needs Bitcoin Core as a systemd service and polkit (installed on Ubuntu Server; on Debian:
+`sudo apt install polkitd`). Turn it on with the installer:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/mvanasseldonk/bitcoin-node-dash/main/install.sh | NODEDASH_CONTROL=1 sh
+```
+
+`NODEDASH_CONTROL=0` turns it off again. Use `BITCOIN_SERVICE=…` when your service has another name.
+
+What the installer does:
+
+- **A polkit rule** in `/etc/polkit-1/rules.d/50-node-dash.rules` lets the dashboard's user start, stop and restart
+  that one service, and nothing else.
+- **A drop-in** in `/etc/systemd/system/node-dash.service.d/control.conf` sets `NODEDASH_CONTROL=1`. It also works
+  when you wrote `node-dash.service` yourself.
+- **A check** with `pkcheck` that polkit really allows it.
+
+How it works and why: [decision 0001](docs/decisions/0001-controlling-bitcoind.md).
+
+- **A clean shutdown:** stop and restart go through systemd, which sends Bitcoin Core SIGTERM. Never RPC `stop`:
+  with `Restart=always`, systemd would start it again.
+- **Stop timeout:** systemd force-stops a service after 90 seconds by default. Bitcoin Core may need longer to
+  write its cache to disk, and a forced stop can corrupt the chainstate. The dashboard and the installer warn when
+  the timeout is under 5 minutes. To allow 10 minutes:
+
+  ```bash
+  sudo systemctl edit bitcoind.service
+  ```
+
+  and add:
+
+  ```ini
+  [Service]
+  TimeoutStopSec=600
+  ```
+
+- **Protection against web pages:** a malicious site in a browser on your network can't use the controls. The
+  dashboard only accepts JSON requests from its own page, on an IP address or `localhost`. When you open the
+  dashboard by a host name, such as `http://bitcoin-node.lan:8080`, add that name to `NODEDASH_HOSTS`
+  (`sudo systemctl edit node-dash`, `Environment=NODEDASH_HOSTS=bitcoin-node.lan`).
+- **Not supported yet:** Bitcoin Core in Docker, and systems without polkit.
 
 ## Troubleshooting
 
@@ -194,6 +247,7 @@ Requirements: Go 1.26+ and Node.js 26 (see `.nvmrc`; run `nvm use`).
 ```bash
 make run                 # build everything and run on mock data at http://localhost:8080
 make run MOCK=warning    # other scenarios: healthy, syncing, warning, error, unreachable, starting, stale
+make run CONTROL=1       # with node control on a simulated systemd
 make run MOCK=           # connect to Bitcoin Core instead (see Configuration)
 make test                # Go tests + frontend type check
 make lint                # gofmt + go vet
