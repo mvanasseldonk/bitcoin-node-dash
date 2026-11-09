@@ -4,8 +4,13 @@ import { ago, formatBytes, isZeroTime, shortDuration } from './format'
 // Thresholds from stories #2–#4. Colour is only used when something needs attention.
 const LAST_BLOCK_WARN_MS = 60 * 60 * 1000
 const FEW_OUTBOUND = 3
-const DISK_WARN = 0.9
-const DISK_ERROR = 0.95
+// Free disk space limits: the absolute amount or the fraction of the disk,
+// whichever is smaller. Same rule as internal/health/health.go.
+const GB = 1e9
+const DISK_WARN = { bytes: 50 * GB, fraction: 0.1 }
+const DISK_ERROR = { bytes: 10 * GB, fraction: 0.05 }
+const below = (free: number, total: number, limit: { bytes: number; fraction: number }) =>
+  free < Math.min(limit.bytes, limit.fraction * total)
 
 type Tone = 'neutral' | 'muted' | 'warning' | 'error'
 
@@ -55,8 +60,8 @@ export function serverTile(s: NodeData['server']): Single {
   const used = 1 - s.diskFreeBytes / s.diskTotalBytes
   const free = formatBytes(s.diskFreeBytes)
   const full = `free · disk ${Math.round(used * 100)}% full`
-  if (used > DISK_ERROR) return { big: free, line: full, tone: 'error' }
-  if (used > DISK_WARN) return { big: free, line: full, tone: 'warning' }
+  if (below(s.diskFreeBytes, s.diskTotalBytes, DISK_ERROR)) return { big: free, line: full, tone: 'error' }
+  if (below(s.diskFreeBytes, s.diskTotalBytes, DISK_WARN)) return { big: free, line: full, tone: 'warning' }
   return { big: free, line: 'free disk space', tone: 'neutral' }
 }
 

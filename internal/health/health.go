@@ -20,11 +20,23 @@ const (
 	HeadersBehindWarn = 2
 	// FewOutbound is the highest number of outgoing connections that counts as "few".
 	FewOutbound = 3
-	// DiskFreeWarn and DiskFreeError are the fractions of free disk space
-	// below which the node needs attention or has a problem.
-	DiskFreeWarn  = 0.10
-	DiskFreeError = 0.05
+	// Free disk space below which the node needs attention or has a problem.
+	// The limit is the absolute amount or the fraction of the disk, whichever
+	// is smaller: on large disks the absolute amount counts (the chain grows
+	// by roughly 60-90 GB a year, so 50 GB is months and 10 GB is weeks), on
+	// small disks, such as pruned nodes, the fraction does.
+	DiskFreeWarnBytes     = 50 * gigabyte
+	DiskFreeWarnFraction  = 0.10
+	DiskFreeErrorBytes    = 10 * gigabyte
+	DiskFreeErrorFraction = 0.05
+
+	gigabyte = 1_000_000_000
 )
+
+// diskLimit returns the smaller of an absolute limit and a fraction of total.
+func diskLimit(abs uint64, frac float64, total uint64) uint64 {
+	return min(abs, uint64(frac*float64(total)))
+}
 
 type finding struct {
 	level  model.Level
@@ -85,17 +97,29 @@ func findings(d *model.NodeData, now time.Time) []finding {
 
 	// Disk space of the volume with the blockchain data (unknown when total is 0).
 	if s := d.Server; s.DiskTotalBytes > 0 {
-		free := float64(s.DiskFreeBytes) / float64(s.DiskTotalBytes)
-		full := fmt.Sprintf("Disk %d%% full", int(math.Round((1-free)*100)))
+		free := Bytes(s.DiskFreeBytes)
 		switch {
-		case free < DiskFreeError:
-			fs = append(fs, finding{model.Error, full})
-		case free < DiskFreeWarn:
-			fs = append(fs, finding{model.Warning, full})
+		case s.DiskFreeBytes < diskLimit(DiskFreeErrorBytes, DiskFreeErrorFraction, s.DiskTotalBytes):
+			fs = append(fs, finding{model.Error, "Disk almost full: " + free + " free"})
+		case s.DiskFreeBytes < diskLimit(DiskFreeWarnBytes, DiskFreeWarnFraction, s.DiskTotalBytes):
+			fs = append(fs, finding{model.Warning, "Low disk space: " + free + " free"})
 		}
 	}
 
 	return fs
+}
+
+// Bytes formats a size in decimal units, like disk vendors and the frontend:
+// "812 GB", "1.3 TB", "450 MB".
+func Bytes(b uint64) string {
+	switch {
+	case b >= 1_000_000_000_000:
+		return fmt.Sprintf("%.1f TB", float64(b)/1e12)
+	case b >= gigabyte:
+		return fmt.Sprintf("%d GB", int(math.Round(float64(b)/1e9)))
+	default:
+		return fmt.Sprintf("%d MB", int(math.Round(float64(b)/1e6)))
+	}
 }
 
 // Duration formats a duration in plain language: "74 minutes", "3 hours", "2 days".

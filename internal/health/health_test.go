@@ -24,6 +24,19 @@ func healthy() *model.NodeData {
 	}
 }
 
+func TestBytes(t *testing.T) {
+	for in, want := range map[uint64]string{
+		450_000_000:       "450 MB",
+		47 * gb:           "47 GB",
+		812 * gb:          "812 GB",
+		1_340_000_000_000: "1.3 TB",
+	} {
+		if got := Bytes(in); got != want {
+			t.Errorf("Bytes(%d) = %q, want %q", in, got, want)
+		}
+	}
+}
+
 func TestEvaluate(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -51,9 +64,17 @@ func TestEvaluate(t *testing.T) {
 		{"no block for 74 min", func(d *model.NodeData) { d.Blockchain.LastBlockTime = now.Add(-74 * time.Minute) }, model.Warning, []string{"No new block for 74 minutes"}},
 		{"no block for 60 min", func(d *model.NodeData) { d.Blockchain.LastBlockTime = now.Add(-60 * time.Minute) }, model.Healthy, []string{}},
 
-		{"disk 92% full", func(d *model.NodeData) { d.Server.DiskFreeBytes = 160 * gb }, model.Warning, []string{"Disk 92% full"}},
-		{"disk 90% full", func(d *model.NodeData) { d.Server.DiskFreeBytes = 200 * gb }, model.Healthy, []string{}},
-		{"disk 97% full", func(d *model.NodeData) { d.Server.DiskFreeBytes = 60 * gb }, model.Error, []string{"Disk 97% full"}},
+		// Large disk (2 TB): the absolute limits count (50 GB / 10 GB).
+		{"160 GB free is fine", func(d *model.NodeData) { d.Server.DiskFreeBytes = 160 * gb }, model.Healthy, []string{}},
+		{"50 GB free is fine", func(d *model.NodeData) { d.Server.DiskFreeBytes = 50 * gb }, model.Healthy, []string{}},
+		{"47 GB free", func(d *model.NodeData) { d.Server.DiskFreeBytes = 47 * gb }, model.Warning, []string{"Low disk space: 47 GB free"}},
+		{"10 GB free", func(d *model.NodeData) { d.Server.DiskFreeBytes = 10 * gb }, model.Warning, []string{"Low disk space: 10 GB free"}},
+		{"8 GB free", func(d *model.NodeData) { d.Server.DiskFreeBytes = 8 * gb }, model.Error, []string{"Disk almost full: 8 GB free"}},
+		{"450 MB free", func(d *model.NodeData) { d.Server.DiskFreeBytes = 450_000_000 }, model.Error, []string{"Disk almost full: 450 MB free"}},
+		// Small disk (64 GB, e.g. a pruned node): the fractions count (6.4 GB / 3.2 GB).
+		{"small disk, 20 GB free is fine", func(d *model.NodeData) { d.Server = model.Server{DiskFreeBytes: 20 * gb, DiskTotalBytes: 64 * gb} }, model.Healthy, []string{}},
+		{"small disk, 5 GB free", func(d *model.NodeData) { d.Server = model.Server{DiskFreeBytes: 5 * gb, DiskTotalBytes: 64 * gb} }, model.Warning, []string{"Low disk space: 5 GB free"}},
+		{"small disk, 3 GB free", func(d *model.NodeData) { d.Server = model.Server{DiskFreeBytes: 3 * gb, DiskTotalBytes: 64 * gb} }, model.Error, []string{"Disk almost full: 3 GB free"}},
 
 		{"errors before warnings", func(d *model.NodeData) {
 			d.Blockchain.LastBlockTime = now.Add(-74 * time.Minute)
@@ -61,8 +82,8 @@ func TestEvaluate(t *testing.T) {
 		}, model.Error, []string{"No peers connected", "No new block for 74 minutes"}},
 		{"several warnings", func(d *model.NodeData) {
 			d.Blockchain.LastBlockTime = now.Add(-74 * time.Minute)
-			d.Server.DiskFreeBytes = 152 * gb
-		}, model.Warning, []string{"No new block for 74 minutes", "Disk 92% full"}},
+			d.Server.DiskFreeBytes = 38 * gb
+		}, model.Warning, []string{"No new block for 74 minutes", "Low disk space: 38 GB free"}},
 	}
 
 	for _, tt := range tests {
