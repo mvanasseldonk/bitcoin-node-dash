@@ -42,7 +42,10 @@ func TestInitialSnapshotIsUnreachable(t *testing.T) {
 }
 
 func TestSuccessfulPoll(t *testing.T) {
-	data := &model.NodeData{Blockchain: model.Blockchain{Blocks: 42}}
+	data := &model.NodeData{
+		Blockchain: model.Blockchain{Blocks: 42, Headers: 42, LastBlockTime: time.Now()},
+		Network:    model.Network{Outbound: 10},
+	}
 	p := newTestPoller(&fakeSource{data: data})
 	p.Poll(context.Background())
 

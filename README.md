@@ -40,6 +40,20 @@ cd web && npm run dev                          # UI on :5173, proxies /api to :8
 
 The dashboard only uses the read-only RPC calls `getblockchaininfo` and `getnetworkinfo`.
 
+### Status rules
+
+The circle shows the most severe of these rules, with the reasons listed underneath:
+
+| Status          | When                                                                                   |
+| --------------- | -------------------------------------------------------------------------------------- |
+| **Problem**     | No outgoing connections · disk with blockchain data more than 95% full                |
+| **Attention**   | 1–3 outgoing connections · initial sync · more than 2 blocks behind the known headers · no new block for more than 60 minutes · disk more than 90% full |
+| **Unreachable** | The dashboard can't reach Bitcoin Core (last known values stay visible, dimmed)        |
+| **Healthy**     | None of the above                                                                      |
+
+Incoming connections never affect the status: they need an open port and are optional.
+The thresholds live in [`internal/health/health.go`](internal/health/health.go).
+
 ### How it works
 
 - `cmd/node-dash` is the single binary; the built frontend (`web/dist`) is embedded into it.
