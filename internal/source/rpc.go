@@ -99,6 +99,17 @@ func (r *RPC) Fetch(ctx context.Context) (*model.NodeData, error) {
 	return d, nil
 }
 
+// rpcInWarmup is the error code Bitcoin Core returns while it is starting up.
+const rpcInWarmup = -28
+
+// StartingError is returned while Bitcoin Core is starting up and doesn't
+// answer RPC calls yet. Status is its progress, e.g. "Loading block index…".
+type StartingError struct {
+	Status string
+}
+
+func (e *StartingError) Error() string { return "bitcoin core is starting: " + e.Status }
+
 type rpcError struct {
 	Code    int    `json:"code"`
 	Message string `json:"message"`
@@ -145,6 +156,9 @@ func (r *RPC) call(ctx context.Context, method string, out any) error {
 		return fmt.Errorf("%s: unexpected response (HTTP %d): %w", method, resp.StatusCode, err)
 	}
 	if rr.Error != nil {
+		if rr.Error.Code == rpcInWarmup {
+			return &StartingError{Status: rr.Error.Message}
+		}
 		return fmt.Errorf("%s: %s (code %d)", method, rr.Error.Message, rr.Error.Code)
 	}
 	if resp.StatusCode != http.StatusOK {

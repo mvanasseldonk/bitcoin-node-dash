@@ -114,7 +114,7 @@ The password is never logged.
 | `BITCOIN_RPC_COOKIE`   | `$BITCOIN_DATADIR/.cookie` | Cookie file for RPC authentication                                                  |
 | `BITCOIN_RPC_USER`     | _(empty)_                  | RPC user; when set, used instead of `bitcoin.conf` and the cookie file              |
 | `BITCOIN_RPC_PASSWORD` | _(empty)_                  | RPC password for `BITCOIN_RPC_USER`                                                 |
-| `NODEDASH_MOCK`        | _(empty)_                  | Run on mock data: `healthy`, `syncing`, `warning`, `error`, `unreachable` or `stale` |
+| `NODEDASH_MOCK`        | _(empty)_                  | Run on mock data: `healthy`, `syncing`, `warning`, `error`, `unreachable`, `starting` or `stale` |
 
 ## Troubleshooting
 
@@ -142,6 +142,7 @@ The circle shows the most severe of these rules, with the reasons listed underne
 | --------------- | -------------------------------------------------------------------------------------- |
 | **Problem**     | No outgoing connections · less than 10 GB free on the disk with blockchain data        |
 | **Attention**   | 1–3 outgoing connections · initial sync · more than 2 blocks behind the known headers · no new block for more than 60 minutes · less than 50 GB free on the disk |
+| **Starting**    | Bitcoin Core is starting up (loading the block index, verifying blocks, …); its own progress message is shown |
 | **Unreachable** | The dashboard can't reach Bitcoin Core (last known values stay visible, dimmed)        |
 | **Healthy**     | None of the above                                                                      |
 
@@ -157,7 +158,7 @@ Requirements: Go 1.26+ and Node.js 26 (see `.nvmrc`; run `nvm use`).
 
 ```bash
 make run                 # build everything and run on mock data at http://localhost:8080
-make run MOCK=warning    # other scenarios: healthy, syncing, warning, error, unreachable, stale
+make run MOCK=warning    # other scenarios: healthy, syncing, warning, error, unreachable, starting, stale
 make run MOCK=           # connect to Bitcoin Core instead (see Configuration)
 make test                # Go tests + frontend type check
 make lint                # gofmt + go vet
@@ -176,6 +177,8 @@ cd web && npm run dev                          # UI on :5173, proxies /api to :8
 - `internal/poller` fetches node data every 10 seconds with a 5 second timeout and caches it,
   so every open browser tab reads the same snapshot (`GET /api/status`) instead of hitting the node.
 - When the node can't be reached, the last known data is kept and the status becomes *Unreachable*.
+  Attempts then slow down (10, 20, then every 30 seconds), and return to every 10 seconds once the node answers.
+  While Bitcoin Core starts up the status is *Starting*, with its progress message, and polling stays at 10 seconds.
 - The browser refreshes every 10 seconds, and right away when you return to the tab. Data older than
   30 seconds is dimmed and marked as last known values. Ages are measured on the server's clock
   (`serverTime` in `/api/status`), so a browser with a wrong clock still shows them correctly.

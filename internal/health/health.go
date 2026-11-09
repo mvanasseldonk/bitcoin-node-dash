@@ -145,7 +145,13 @@ func plural(n int, one, many string) string {
 	return many
 }
 
-// Unreachable is the health when the node cannot be reached.
+// Starting is the health of a node that is still starting up; status is
+// Bitcoin Core's own progress message, e.g. "Loading block index…".
+func Starting(status string) model.Health {
+	return model.Health{Level: model.Starting, Reasons: []string{status}}
+}
+
+// Unreachable is the health of a node that can't be reached.
 func Unreachable() model.Health {
 	return model.Health{Level: model.Unreachable, Reasons: []string{"Can't reach bitcoin node"}}
 }

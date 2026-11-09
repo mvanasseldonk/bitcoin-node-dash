@@ -1,6 +1,6 @@
 // Types mirror internal/model/model.go.
 
-export type Level = 'healthy' | 'warning' | 'error' | 'unreachable'
+export type Level = 'healthy' | 'warning' | 'error' | 'unreachable' | 'starting'
 
 export interface NodeData {
   blockchain: {
