@@ -162,15 +162,6 @@ cd web && npm run dev                          # UI on :5173, proxies /api to :8
 - `GET /healthz` reports whether the dashboard itself is running; `node-dash healthcheck` calls it
   (used by the Docker `HEALTHCHECK`).
 
-### Releasing
-
-Push a version tag, e.g. `git tag v0.1.0 && git push origin v0.1.0`. GitHub Actions then
-
-- publishes the Docker image as `:0.1.0`, `:0.1` and `:latest` (`.github/workflows/docker.yml`), and
-- creates a GitHub Release with binaries for Linux and macOS, amd64 and arm64 (`.github/workflows/release.yml`).
-
-Every push to `main` publishes the `:edge` image.
-
 ## License
 
 MIT
