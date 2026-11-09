@@ -124,7 +124,8 @@ body {
 .circle-error {
   --tone: var(--error);
 }
-.circle-unreachable {
+.circle-unreachable,
+.circle-starting {
   --tone: var(--unreachable);
 }
 

@@ -10,6 +10,7 @@ const LABELS: Record<Level, string> = {
   warning: 'Attention',
   error: 'Problem',
   unreachable: 'Unreachable',
+  starting: 'Starting',
 }
 
 /** Data older than this is marked as stale, even when the node is reachable. */
@@ -94,6 +95,9 @@ export function App() {
   let subline = ''
   if (serverDown) {
     subline = 'Can’t reach the dashboard server'
+  } else if (level === 'starting') {
+    // Bitcoin Core's own progress message, e.g. "Loading block index…"
+    subline = ['Bitcoin node is starting', ...(snap?.health.reasons ?? [])].join(' · ')
   } else if (snap && !snap.reachable) {
     subline = 'Can’t reach bitcoin node · retrying'
   } else if (stale) {
