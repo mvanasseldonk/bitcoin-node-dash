@@ -4,9 +4,8 @@ A minimal, calm dashboard for your Bitcoin Core node. One look tells you whether
 your node is healthy; it stays up when your node doesn't, and it barely uses any
 resources.
 
-> **Status:** early development. The dashboard currently runs on mock data;
-> connecting to Bitcoin Core over RPC is next. Installation via a ready-made
-> Docker image and release binaries will follow.
+> **Status:** early development. Installation via a ready-made Docker image and
+> release binaries will follow. Requires Bitcoin Core 23 or newer.
 
 ## Development
 
@@ -14,7 +13,8 @@ Requirements: Go 1.25+ and Node.js 22+.
 
 ```bash
 make run                 # build everything and run on mock data at http://localhost:8080
-make run MOCK=warning    # other scenarios: healthy, warning, error, unreachable
+make run MOCK=warning    # other scenarios: healthy, syncing, warning, error, unreachable
+make run MOCK=           # connect to Bitcoin Core instead (see Configuration)
 make test                # Go tests + frontend type check
 make lint                # gofmt + go vet
 ```
@@ -28,10 +28,17 @@ cd web && npm run dev                          # UI on :5173, proxies /api to :8
 
 ### Configuration
 
-| Variable          | Default   | Description                                                            |
-| ----------------- | --------- | ---------------------------------------------------------------------- |
-| `NODEDASH_LISTEN` | `:8080`   | Address the dashboard listens on                                       |
-| `NODEDASH_MOCK`   | `healthy` | Mock scenario: `healthy`, `warning`, `error` or `unreachable`          |
+| Variable               | Default                  | Description                                                                            |
+| ---------------------- | ------------------------ | -------------------------------------------------------------------------------------- |
+| `NODEDASH_LISTEN`      | `:8080`                  | Address the dashboard listens on                                                       |
+| `NODEDASH_MOCK`        | _(empty)_                | Run on mock data: `healthy`, `syncing`, `warning`, `error` or `unreachable`            |
+| `BITCOIN_RPC_URL`      | `http://127.0.0.1:8332`  | Bitcoin Core JSON-RPC address                                                          |
+| `BITCOIN_DATADIR`      | `~/.bitcoin`             | Bitcoin data directory; used for the cookie file and to measure free disk space        |
+| `BITCOIN_RPC_COOKIE`   | `$BITCOIN_DATADIR/.cookie` | Cookie file for RPC authentication (re-read on every call, so restarts are handled)  |
+| `BITCOIN_RPC_USER`     | _(empty)_                | RPC user; when set, used instead of the cookie file                                    |
+| `BITCOIN_RPC_PASSWORD` | _(empty)_                | RPC password for `BITCOIN_RPC_USER`                                                    |
+
+The dashboard only uses the read-only RPC calls `getblockchaininfo` and `getnetworkinfo`.
 
 ### How it works
 

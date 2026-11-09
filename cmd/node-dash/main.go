@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -34,13 +35,10 @@ func main() {
 func run(log *slog.Logger) error {
 	listen := envOr("NODEDASH_LISTEN", ":8080")
 
-	// Until the Bitcoin Core RPC source lands, the dashboard runs on mock data.
-	scenario := envOr("NODEDASH_MOCK", "healthy")
-	src, err := source.NewMock(scenario)
+	src, err := newSource(log)
 	if err != nil {
 		return err
 	}
-	log.Info("using mock data", "scenario", scenario)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -76,6 +74,35 @@ func run(log *slog.Logger) error {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	return srv.Shutdown(shutdownCtx)
+}
+
+// newSource returns the mock source when NODEDASH_MOCK is set,
+// and the Bitcoin Core RPC source otherwise.
+func newSource(log *slog.Logger) (source.Source, error) {
+	if scenario := os.Getenv("NODEDASH_MOCK"); scenario != "" {
+		log.Info("using mock data", "scenario", scenario)
+		return source.NewMock(scenario)
+	}
+
+	dataDir := os.Getenv("BITCOIN_DATADIR")
+	if dataDir == "" {
+		if home, err := os.UserHomeDir(); err == nil {
+			dataDir = filepath.Join(home, ".bitcoin")
+		}
+	}
+	cfg := source.RPCConfig{
+		URL:        envOr("BITCOIN_RPC_URL", "http://127.0.0.1:8332"),
+		CookiePath: envOr("BITCOIN_RPC_COOKIE", filepath.Join(dataDir, ".cookie")),
+		User:       os.Getenv("BITCOIN_RPC_USER"),
+		Password:   os.Getenv("BITCOIN_RPC_PASSWORD"),
+		DataDir:    dataDir,
+	}
+	auth := "cookie " + cfg.CookiePath
+	if cfg.User != "" {
+		auth = "user " + cfg.User
+	}
+	log.Info("using Bitcoin Core RPC", "url", cfg.URL, "auth", auth, "datadir", cfg.DataDir)
+	return source.NewRPC(cfg), nil
 }
 
 func envOr(key, def string) string {
