@@ -17,5 +17,5 @@ func Evaluate(_ *model.NodeData, _ time.Time) model.Health {
 
 // Unreachable is the health when the node cannot be reached.
 func Unreachable() model.Health {
-	return model.Health{Level: model.Unreachable, Reasons: []string{"Can't reach bitcoind"}}
+	return model.Health{Level: model.Unreachable, Reasons: []string{"Can't reach bitcoin node"}}
 }

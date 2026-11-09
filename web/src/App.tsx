@@ -60,7 +60,7 @@ export function App() {
   if (serverDown) {
     subline = 'Can’t reach the dashboard server'
   } else if (snap && !snap.reachable) {
-    subline = 'Can’t reach bitcoind · retrying'
+    subline = 'Can’t reach bitcoin node · retrying'
   } else if (snap?.data && reasons.length === 0) {
     const { network, blockchain } = snap.data
     subline = `Fully synced · ${network.outbound + network.inbound} peers · last block ${ago(blockchain.lastBlockTime, now)}`
