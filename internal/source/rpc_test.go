@@ -130,3 +130,26 @@ func TestDiskUsageOfTempDir(t *testing.T) {
 		t.Fatalf("free=%d total=%d", free, total)
 	}
 }
+
+// TestRPCOnlyCheapCalls guards the polling loop against expensive RPC calls
+// (story #7): one fetch makes exactly these two lightweight calls.
+func TestRPCOnlyCheapCalls(t *testing.T) {
+	var methods []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Method string `json:"method"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		methods = append(methods, req.Method)
+		_, _ = io.WriteString(w, `{"result":`+okResults[req.Method]+`,"error":null,"id":"node-dash"}`)
+	}))
+	defer srv.Close()
+
+	r := NewRPC(RPCConfig{URL: srv.URL, User: "alice", Password: "pw"})
+	if _, err := r.Fetch(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(methods, ","); got != "getblockchaininfo,getnetworkinfo" {
+		t.Fatalf("RPC calls per fetch = %s, want getblockchaininfo,getnetworkinfo", got)
+	}
+}

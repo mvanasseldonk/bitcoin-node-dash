@@ -45,6 +45,11 @@ jobs:
           docker run --rm node-dash:test version
           docker image inspect node-dash:test --format 'Image size: {{.Size}} bytes'
           docker stats --no-stream nd
+          # Story #7: stays well below 100 MB, also after many visitors.
+          for i in $(seq 1 200); do curl -fsS -o /dev/null http://localhost:8080/api/status; done
+          mem=$(docker stats --no-stream --format '{{.MemUsage}}' nd | awk '{print $1}')
+          echo "Memory after 200 requests: $mem"
+          echo "$mem" | awk '/GiB/ {exit 1} /MiB/ {if ($1 + 0 >= 100) exit 1}' || { echo "::error::memory use $mem is 100 MB or more"; exit 1; }
           docker logs nd
           docker rm -f nd
 
