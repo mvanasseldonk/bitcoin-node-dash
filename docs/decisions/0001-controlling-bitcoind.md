@@ -157,3 +157,18 @@ systemctl cat bitcoind.service | grep -E '^(Type|User|Restart|ExecStart|ExecStop
   `systemctl restart bitcoind.service`. It must work without a password prompt. Then the decision holds.
 - **polkit not installed:** decide between installing it (`sudo apt install polkitd`) and the path unit fallback.
 - **`Restart=always` in the unit:** that's fine with option B, because systemd's own stop doesn't trigger a restart.
+
+### Findings on the first node (2026-11-09)
+
+- **Versions:** Ubuntu 24.04 (systemd 255), and polkit is installed. That version reads JavaScript rules from
+  `/etc/polkit-1/rules.d/`, so option B applies.
+- **`bitcoind.service`:** `Type=forking`, `User=martijn`, `Restart=always`.
+  - **What `Restart=always` means here:** `systemctl stop` stops for good.
+  - **Pitfall:** an RPC `stop` or `bitcoin-cli stop` makes systemd start bitcoind again. The dashboard must
+    therefore always stop through systemd, never through RPC.
+- **No `TimeoutStopSec`:** systemd's default of 90 seconds applies. Bitcoin Core can need longer to shut down
+  cleanly, because it first writes its cache to disk. After 90 seconds systemd kills it, which can corrupt the
+  chainstate and force a long reindex. That risk exists today on every reboot, regardless of the dashboard.
+  - **Fix:** add a drop-in with `TimeoutStopSec=600`, the value the contrib unit uses.
+  - **For #10:** the dashboard must check this timeout, and warn about it before it offers stop or restart.
+- **Permission check:** use `pkcheck` to test the rule without restarting the node.
