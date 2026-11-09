@@ -42,3 +42,46 @@ export async function fetchStatus(signal: AbortSignal): Promise<Snapshot> {
   if (!res.ok) throw new Error(`status ${res.status}`)
   return res.json()
 }
+
+// Node control (story #10). Mirrors internal/control.State.
+
+export type Action = 'start' | 'stop' | 'restart'
+
+export interface ControlState {
+  unit: string
+  available: boolean
+  /** systemd's ActiveState: active, activating, deactivating, inactive, failed… */
+  activeState: string
+  subState: string
+  since: string
+  /** How long systemd waits for a clean stop: 0 unknown, -1 infinite. */
+  stopTimeoutSec: number
+  actions: Action[]
+  pending: { action: Action; startedAt: string } | null
+  permissionDenied: boolean
+  error: string
+}
+
+/** Returns null when node control is off (404). */
+export async function fetchControl(signal: AbortSignal): Promise<ControlState | null> {
+  const res = await fetch('/api/control', {
+    signal: AbortSignal.any([signal, AbortSignal.timeout(FETCH_TIMEOUT_MS)]),
+    cache: 'no-store',
+  })
+  if (res.status === 404) return null
+  if (!res.ok) throw new Error(`control ${res.status}`)
+  return res.json()
+}
+
+/** Starts an action; the error message comes from the server when it refuses. */
+export async function postControl(action: Action): Promise<ControlState> {
+  const res = await fetch('/api/control', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action }),
+    signal: AbortSignal.timeout(15_000),
+  })
+  const body = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(body.error || `The dashboard refused the action (${res.status})`)
+  return body
+}

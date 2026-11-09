@@ -12,9 +12,9 @@ web:
 build: web
 	go build -trimpath -o bin/node-dash ./cmd/node-dash
 
-## run: build and run on mock data (MOCK=healthy|syncing|warning|error|unreachable|starting|stale)
+## run: build and run on mock data (MOCK=healthy|syncing|warning|error|unreachable|starting|stale; CONTROL=1 for simulated node control)
 run: build
-	NODEDASH_MOCK=$(MOCK) ./bin/node-dash
+	NODEDASH_MOCK=$(MOCK) NODEDASH_CONTROL=$(CONTROL) ./bin/node-dash
 
 ## test: run Go tests and the frontend type check
 test:

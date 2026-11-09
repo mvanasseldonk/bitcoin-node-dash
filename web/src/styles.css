@@ -250,3 +250,245 @@ body {
     transition: none;
   }
 }
+
+/* Node control (#10) */
+.header-end {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.power {
+  width: 44px;
+  height: 44px;
+  margin-right: -10px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.power:hover {
+  color: var(--ink);
+  background: var(--line);
+}
+.power:focus-visible,
+.btn:focus-visible,
+.sheet-close:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.circle-busy {
+  --tone: var(--ink);
+}
+.circle-stopped {
+  --tone: var(--faint);
+}
+.dot-ink {
+  background: var(--ink);
+}
+
+.sheet-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.sheet-overlay {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  padding: 0;
+  background: rgba(16, 19, 24, 0.4);
+  cursor: default;
+}
+.sheet {
+  position: relative;
+  width: 100%;
+  max-width: 400px;
+  max-height: 90vh;
+  overflow-y: auto;
+  background: var(--surface);
+  border-radius: 24px 24px 0 0;
+  padding: 12px 24px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  outline: none;
+  animation: sheet-in 200ms ease-out;
+}
+@keyframes sheet-in {
+  from {
+    transform: translateY(24px);
+    opacity: 0;
+  }
+}
+.sheet-handle {
+  align-self: center;
+  width: 36px;
+  height: 4px;
+  border-radius: 999px;
+  background: #d5d8dd;
+}
+.sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.sheet-head h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+.sheet-close {
+  width: 44px;
+  height: 44px;
+  margin-right: -12px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.sheet-rows {
+  margin: 0 0 8px;
+}
+.sheet-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 0;
+  border-top: 1px solid var(--line);
+}
+.sheet-row dt {
+  color: var(--muted);
+}
+.sheet-row dd {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.sheet-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.btn {
+  height: 52px;
+  border-radius: 16px;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.btn-primary {
+  border: 0;
+  background: var(--ink);
+  color: #fff;
+}
+.btn-secondary {
+  border: 1px solid #dadde2;
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.sheet-note {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+  text-align: center;
+}
+.sheet-confirm h3 {
+  margin: 0 0 4px;
+  font-size: 16px;
+  font-weight: 600;
+}
+.sheet-confirm > p {
+  margin: 0 0 16px;
+  color: var(--muted);
+}
+.sheet-note-box {
+  margin-bottom: 16px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: var(--bg);
+  font-size: 14px;
+}
+.sheet-note-box p {
+  margin: 0 0 10px;
+}
+.sheet-note-box pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+  font-size: 12px;
+}
+.sheet-warning {
+  color: var(--warning);
+  background: color-mix(in srgb, var(--warning) 8%, var(--surface));
+}
+.sheet-warning pre {
+  color: var(--ink);
+}
+.sheet-error {
+  margin: 8px 0 0;
+  color: var(--error);
+  font-size: 14px;
+}
+
+.steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.step {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 0;
+  border-top: 1px solid var(--line);
+}
+.step-todo {
+  color: var(--muted);
+}
+.step-mark {
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+.step-done .step-mark {
+  background: var(--ink);
+}
+.step-current .step-mark {
+  border: 2px solid var(--ink);
+}
+.step-current .step-mark::after {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--ink);
+}
+.step-todo .step-mark {
+  border: 1.5px solid #d5d8dd;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sheet {
+    animation: none;
+  }
+}

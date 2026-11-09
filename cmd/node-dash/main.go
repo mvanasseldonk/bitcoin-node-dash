@@ -11,9 +11,12 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
+	"github.com/mvanasseldonk/bitcoin-node-dash/internal/control"
+	"github.com/mvanasseldonk/bitcoin-node-dash/internal/model"
 	"github.com/mvanasseldonk/bitcoin-node-dash/internal/poller"
 	"github.com/mvanasseldonk/bitcoin-node-dash/internal/server"
 	"github.com/mvanasseldonk/bitcoin-node-dash/internal/source"
@@ -96,9 +99,28 @@ func run(log *slog.Logger) error {
 	p := poller.New(src, pollInterval, fetchTimeout, log)
 	go p.Run(ctx)
 
+	var opts []server.Option
+	if os.Getenv("NODEDASH_CONTROL") == "1" {
+		unit := envOr("BITCOIN_SERVICE", "bitcoind.service")
+		ready := func() bool {
+			s := p.Snapshot()
+			return s.Reachable && s.Health.Level != model.Starting
+		}
+		var hosts []string
+		if v := os.Getenv("NODEDASH_HOSTS"); v != "" {
+			hosts = strings.Split(v, ",")
+		}
+		ctrl := control.New(unit, ready, log)
+		if os.Getenv("NODEDASH_MOCK") != "" {
+			ctrl = control.NewWithRunner(unit, control.MockRunner(), ready, log)
+		}
+		opts = append(opts, server.WithControl(ctrl, hosts))
+		log.Info("node control enabled", "unit", unit)
+	}
+
 	srv := &http.Server{
 		Addr:              listen,
-		Handler:           server.New(p, web.Dist()),
+		Handler:           server.New(p, web.Dist(), opts...),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      10 * time.Second,

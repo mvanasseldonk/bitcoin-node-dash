@@ -1,9 +1,12 @@
-import { useEffect, useState } from 'preact/hooks'
+import { useEffect, useRef, useState } from 'preact/hooks'
 import { fetchStatus, type Level, type Snapshot } from './api'
 import { ago, clockTime, isZeroTime, shortDuration } from './format'
 import { Tiles } from './tiles'
+import { ControlSheet, PowerButton, useControl } from './control'
 
 const REFRESH_MS = 10_000
+/** While a node action runs, follow its progress closely. */
+const FAST_REFRESH_MS = 2_000
 
 const LABELS: Record<Level, string> = {
   healthy: 'Healthy',
@@ -27,10 +30,13 @@ interface Received {
  * Returns serverNow: the current time on the server's clock, so ages don't
  * depend on the browser's clock being right.
  */
-function useStatus() {
+function useStatus(fast: boolean) {
   const [received, setReceived] = useState<Received | null>(null)
   const [serverDown, setServerDown] = useState(false)
   const [now, setNow] = useState(Date.now())
+  const interval = useRef(REFRESH_MS)
+  interval.current = fast ? FAST_REFRESH_MS : REFRESH_MS
+  const reload = useRef<() => void>(() => {})
 
   useEffect(() => {
     let alive = true
@@ -51,10 +57,11 @@ function useStatus() {
         if (alive) setServerDown(true)
       } finally {
         inFlight = false
-        if (alive) timer = window.setTimeout(load, REFRESH_MS)
+        if (alive) timer = window.setTimeout(load, interval.current)
       }
     }
     load()
+    reload.current = load
 
     // Background tabs get their timers throttled; refresh right away on return.
     const onVisible = () => {
@@ -74,13 +81,24 @@ function useStatus() {
     }
   }, [])
 
+  // Switching to fast polling: don't wait for the slow timer.
+  useEffect(() => {
+    if (fast) reload.current()
+  }, [fast])
+
   const snap = received?.snap ?? null
   const offset = received?.snap.serverTime ? Date.parse(received.snap.serverTime) - received.at : 0
   return { snap, serverDown, serverNow: now + offset, offset }
 }
 
 export function App() {
-  const { snap, serverDown, serverNow: now, offset } = useStatus()
+  const [sheetOpen, setSheetOpen] = useState(false)
+  const [fast, setFast] = useState(false)
+  const { snap, serverDown, serverNow: now, offset } = useStatus(fast)
+  const control = useControl(snap, sheetOpen)
+  const progress = control.progress && control.progress.current < control.progress.steps.length ? control.progress : null
+  useEffect(() => setFast(!!control.progress), [!!control.progress])
+  const stopped = !progress && (control.ctrl?.activeState === 'inactive' || control.ctrl?.activeState === 'failed')
 
   const updatedAt = snap && !isZeroTime(snap.updatedAt) ? Date.parse(snap.updatedAt) : null
   const age = updatedAt === null ? null : now - updatedAt
@@ -88,13 +106,30 @@ export function App() {
   const stale = !serverDown && !!snap?.reachable && age !== null && age > STALE_MS
 
   const level: Level | 'loading' = serverDown ? 'unreachable' : (snap?.health.level ?? 'loading')
-  const label = level === 'loading' ? '' : LABELS[level]
+  // A running action or a stopped node (node control, #10) overrides the health level.
+  const tone = serverDown ? 'unreachable' : progress ? 'busy' : stopped ? 'stopped' : level
+  const label = serverDown ? LABELS.unreachable : progress ? progress.steps[progress.current] : stopped ? 'Stopped' : level === 'loading' ? '' : LABELS[level]
   // Reasons are listed for warnings and errors; unreachable gets a plain subline.
-  const reasons = level === 'warning' || level === 'error' ? (snap?.health.reasons ?? []) : []
+  const reasons = !progress && !stopped && (level === 'warning' || level === 'error') ? (snap?.health.reasons ?? []) : []
 
   let subline = ''
   if (serverDown) {
     subline = 'Can’t reach the dashboard server'
+  } else if (progress) {
+    // While starting, Bitcoin Core's own progress message, e.g. "Loading block index…"
+    const step = progress.steps[progress.current]
+    const b = snap?.reachable ? snap.data?.blockchain : undefined
+    subline = 'This can take a minute'
+    if (step === 'Starting' && level === 'starting' && snap?.health.reasons.length) {
+      subline = snap.health.reasons.join(' · ')
+    } else if (step === 'Syncing' && b && b.headers > b.blocks) {
+      subline = `Catching up · ${(b.headers - b.blocks).toLocaleString('en-US')} blocks to go`
+    }
+  } else if (stopped) {
+    subline =
+      control.ctrl?.activeState === 'failed'
+        ? 'Bitcoin node stopped with an error · start it from node controls'
+        : 'Bitcoin node is stopped · start it from node controls'
   } else if (level === 'starting') {
     // Bitcoin Core's own progress message, e.g. "Loading block index…"
     subline = ['Bitcoin node is starting', ...(snap?.health.reasons ?? [])].join(' · ')
@@ -110,24 +145,27 @@ export function App() {
       : `Fully synced · ${peers} · last block ${ago(blockchain.lastBlockTime, now)}`
   }
 
-  const fresh = !!snap && !serverDown && snap.reachable && !stale
+  const fresh = !!snap && !serverDown && snap.reachable && !stale && !stopped && !progress
   const updated = age === null ? null : `${shortDuration(age)} ago`
 
   return (
     <div class="page">
       <header class="header">
         <span class="wordmark">Node</span>
-        {updated && (
-          <span class="updated">
-            <span class={`dot ${fresh ? 'dot-live' : ''}`} aria-hidden="true" />
-            {fresh ? `Updated ${updated}` : `Last update ${updated}`}
-          </span>
-        )}
+        <div class="header-end">
+          {updated && (
+            <span class="updated">
+              <span class={`dot ${fresh ? 'dot-live' : ''}`} aria-hidden="true" />
+              {fresh ? `Updated ${updated}` : `Last update ${updated}`}
+            </span>
+          )}
+          {control.enabled && <PowerButton onClick={() => setSheetOpen(true)} />}
+        </div>
       </header>
 
       <main class="main">
         <section class={`hero ${stale ? 'hero-stale' : ''}`} aria-live="polite">
-          <div class={`circle circle-${level}`} role="img" aria-label={label ? `Node status: ${label}` : 'Loading node status'}>
+          <div class={`circle circle-${tone}`} role="img" aria-label={label ? `Node status: ${label}` : 'Loading node status'}>
             <span class="circle-label">{label}</span>
           </div>
           {reasons.length > 0 ? (
@@ -151,6 +189,17 @@ export function App() {
           </div>
         )}
       </main>
+
+      {sheetOpen && control.enabled && (
+        <ControlSheet
+          ctrl={control.ctrl}
+          progress={control.progress}
+          error={control.error}
+          now={now}
+          onRun={control.run}
+          onClose={() => setSheetOpen(false)}
+        />
+      )}
     </div>
   )
 }

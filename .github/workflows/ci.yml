@@ -37,8 +37,9 @@ jobs:
         run: go build -trimpath -o bin/node-dash ./cmd/node-dash
 
   # install.sh on a real systemd host: install an older release, update,
-  # re-run (no-op), keep a changed unit, uninstall. A fake bitcoind process
-  # (perl renaming itself) lets the script detect the user and data directory.
+  # re-run (no-op), keep a changed unit, node control, uninstall. A fake
+  # bitcoind service (perl renaming itself) lets the script detect the user and
+  # data directory, and the dashboard restart it.
   install-script:
     runs-on: ubuntu-latest
     steps:
@@ -51,7 +52,11 @@ jobs:
         run: |
           sudo useradd --create-home bitcoin
           sudo -u bitcoin mkdir -p /home/bitcoin/.bitcoin
-          sudo -u bitcoin sh -c 'nohup perl -e "\$0 = q{/usr/local/bin/bitcoind -daemon -datadir=/home/bitcoin/.bitcoin}; sleep 3600" >/dev/null 2>&1 &'
+          printf '%s\n' '[Service]' 'User=bitcoin' 'Restart=always' \
+            'ExecStart=/usr/bin/perl -e "$$0 = q{/usr/local/bin/bitcoind -datadir=/home/bitcoin/.bitcoin}; sleep 3600"' |
+            sudo tee /etc/systemd/system/bitcoind.service
+          sudo systemctl daemon-reload
+          sudo systemctl start bitcoind
           sleep 1
           ps -eo uid=,args= | grep '[b]itcoind'
 
@@ -86,10 +91,63 @@ jobs:
           grep -x 'RestartSec=7' /etc/systemd/system/node-dash.service
           test "$(node-dash version)" = v0.1.0
 
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Node control
+        run: |
+          command -v pkaction || { sudo apt-get update && sudo apt-get install -y polkitd; }
+          NODEDASH_CONTROL=1 sh install.sh | tee out.txt
+          grep -q 'Node control is on' out.txt
+          grep -q 'TimeoutStopSec=600' out.txt  # the fake unit has systemd's default of 90 s
+          sudo grep -q 'subject.user === "bitcoin"' /etc/polkit-1/rules.d/50-node-dash.rules
+          systemctl show -p Environment --value node-dash | grep -q 'NODEDASH_CONTROL=1'
+
+          # The released binary predates node control: run this commit's build.
+          mkdir -p web/dist && touch web/dist/index.html
+          go build -o node-dash ./cmd/node-dash
+          sudo install -m 0755 node-dash /usr/local/bin/node-dash
+          sudo systemctl restart node-dash
+          for _ in $(seq 10); do curl -fsS -o /dev/null http://127.0.0.1:8080/healthz && break; sleep 1; done
+          curl -fsS http://127.0.0.1:8080/api/control | tee state.json; echo
+          grep -q '"activeState":"active"' state.json
+
+          post() {
+            curl -s -o /dev/null -w '%{http_code}' -X POST "$@" http://127.0.0.1:8080/api/control
+          }
+          before=$(systemctl show -p MainPID --value bitcoind)
+          # Refused: another site, and a plain form post.
+          test "$(post -H 'Content-Type: application/json' -H 'Origin: http://evil.example' -d '{"action":"restart"}')" = 403
+          test "$(post -d 'action=restart')" = 415
+          sleep 2
+          test "$(systemctl show -p MainPID --value bitcoind)" = "$before"
+
+          # Accepted: systemd (allowed by polkit) restarts bitcoind.
+          test "$(post -H 'Content-Type: application/json' -H 'Origin: http://127.0.0.1:8080' -d '{"action":"restart"}')" = 202
+          for _ in $(seq 20); do
+            after=$(systemctl show -p MainPID --value bitcoind)
+            [ "$after" != "$before" ] && [ "$after" != 0 ] && systemctl is-active --quiet bitcoind && break
+            sleep 1
+          done
+          test "$after" != "$before"
+          systemctl is-active bitcoind
+
+      - name: Node control off again
+        run: |
+          NODEDASH_CONTROL=0 sh install.sh | tee out.txt
+          grep -q 'Turning node control off' out.txt
+          sudo test ! -e /etc/polkit-1/rules.d/50-node-dash.rules
+          test ! -e /etc/systemd/system/node-dash.service.d/control.conf
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/api/control)" = 404
+
       - name: Uninstall
         run: |
+          NODEDASH_CONTROL=1 sh install.sh >/dev/null
           sh install.sh --uninstall
           test ! -e /usr/local/bin/node-dash
           test ! -e /etc/systemd/system/node-dash.service
+          sudo test ! -e /etc/polkit-1/rules.d/50-node-dash.rules
+          test ! -e /etc/systemd/system/node-dash.service.d
           if systemctl is-active --quiet node-dash; then echo "service still running"; exit 1; fi
           test -d /home/bitcoin/.bitcoin
