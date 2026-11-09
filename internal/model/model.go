@@ -22,6 +22,40 @@ type NodeData struct {
 	Blockchain Blockchain `json:"blockchain"`
 	Network    Network    `json:"network"`
 	Server     Server     `json:"server"`
+	Software   Software   `json:"software"`
+	// Upgrade is the advice about the node software, or nil when there is
+	// none to give (not Bitcoin Core, or the latest release is unknown).
+	Upgrade *Upgrade `json:"upgrade"`
+}
+
+// Software is the node software and its version (story #24).
+type Software struct {
+	// Name is "Bitcoin Core", "Bitcoin Knots", or "" when unknown.
+	Name string `json:"name"`
+	// Version as people write it: "32.1", "30.0", "29.2.1".
+	Version string `json:"version"`
+	// Label is what the dashboard shows, e.g. "Bitcoin Core 32.1", or the
+	// raw user agent (subversion) for software it doesn't know.
+	Label string `json:"label"`
+	// Major, Minor and Patch of the Bitcoin Core code base.
+	Major int `json:"-"`
+	Minor int `json:"-"`
+	Patch int `json:"-"`
+}
+
+// IsCore reports whether this is Bitcoin Core itself, whose release
+// schedule the upgrade advice is based on.
+func (s Software) IsCore() bool { return s.Name == "Bitcoin Core" }
+
+// Upgrade is the advice to upgrade the node software.
+type Upgrade struct {
+	// Latest is the latest Bitcoin Core release, e.g. "32.1".
+	Latest string `json:"latest"`
+	// Available is true when Latest is newer than the running version.
+	Available bool `json:"available"`
+	// EndOfLife is true when the running major version no longer gets
+	// security fixes.
+	EndOfLife bool `json:"endOfLife"`
 }
 
 // Blockchain describes the sync state of the node.

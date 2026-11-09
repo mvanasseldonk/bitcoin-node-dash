@@ -192,6 +192,7 @@ export function App() {
 
       {sheetOpen && control.enabled && (
         <ControlSheet
+          software={snap?.data?.software?.label}
           ctrl={control.ctrl}
           progress={control.progress}
           error={control.error}

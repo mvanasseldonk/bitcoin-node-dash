@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/mvanasseldonk/bitcoin-node-dash/internal/model"
+	"github.com/mvanasseldonk/bitcoin-node-dash/internal/release"
 	"github.com/mvanasseldonk/bitcoin-node-dash/internal/source"
 )
 
@@ -190,5 +191,30 @@ func TestBackoffWhileUnreachable(t *testing.T) {
 	p.Poll(context.Background())
 	if d := p.NextDelay(); d != time.Second {
 		t.Fatalf("after recovery: %v, want 1s", d)
+	}
+}
+
+func TestUpgradeAdvice(t *testing.T) {
+	data := &model.NodeData{
+		Blockchain: model.Blockchain{Blocks: 42, Headers: 42, LastBlockTime: time.Now()},
+		Network:    model.Network{Outbound: 10},
+		Software:   source.ParseSoftware(280100, "/Satoshi:28.1.0/"),
+	}
+	p := newTestPoller(&fakeSource{data: data})
+
+	// Update check off: no advice, healthy.
+	p.Poll(context.Background())
+	if s := p.Snapshot(); s.Data.Upgrade != nil || s.Health.Level != model.Healthy {
+		t.Fatalf("without releases: got %+v, %s", s.Data.Upgrade, s.Health.Level)
+	}
+
+	p.UseReleases(release.Fixed{Major: 32, Minor: 1})
+	p.Poll(context.Background())
+	s := p.Snapshot()
+	if u := s.Data.Upgrade; u == nil || !u.EndOfLife || u.Latest != "32.1" {
+		t.Fatalf("want end-of-life advice, got %+v", u)
+	}
+	if s.Health.Level != model.Warning {
+		t.Fatalf("level = %s, want warning", s.Health.Level)
 	}
 }

@@ -71,8 +71,10 @@ func (r *RPC) Fetch(ctx context.Context) (*model.NodeData, error) {
 	}
 
 	var ni struct {
-		ConnectionsIn  int `json:"connections_in"`
-		ConnectionsOut int `json:"connections_out"`
+		Version        int    `json:"version"`
+		Subversion     string `json:"subversion"`
+		ConnectionsIn  int    `json:"connections_in"`
+		ConnectionsOut int    `json:"connections_out"`
 	}
 	if err := r.call(ctx, "getnetworkinfo", &ni); err != nil {
 		return nil, err
@@ -86,7 +88,8 @@ func (r *RPC) Fetch(ctx context.Context) (*model.NodeData, error) {
 			VerificationProgress: bc.VerificationProgress,
 			InitialBlockDownload: bc.InitialBlockDownload,
 		},
-		Network: model.Network{Outbound: ni.ConnectionsOut, Inbound: ni.ConnectionsIn},
+		Network:  model.Network{Outbound: ni.ConnectionsOut, Inbound: ni.ConnectionsIn},
+		Software: ParseSoftware(ni.Version, ni.Subversion),
 	}
 	if bc.Time > 0 {
 		d.Blockchain.LastBlockTime = time.Unix(bc.Time, 0).UTC()

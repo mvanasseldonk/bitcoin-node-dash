@@ -149,7 +149,8 @@ The password is never logged.
 | `BITCOIN_RPC_COOKIE`   | `$BITCOIN_DATADIR/.cookie` | Cookie file for RPC authentication                                                  |
 | `BITCOIN_RPC_USER`     | _(empty)_                  | RPC user; when set, used instead of `bitcoin.conf` and the cookie file              |
 | `BITCOIN_RPC_PASSWORD` | _(empty)_                  | RPC password for `BITCOIN_RPC_USER`                                                 |
-| `NODEDASH_MOCK`        | _(empty)_                  | Run on mock data: `healthy`, `syncing`, `warning`, `error`, `unreachable`, `starting` or `stale` |
+| `NODEDASH_MOCK`        | _(empty)_                  | Run on mock data: `healthy`, `syncing`, `warning`, `error`, `unreachable`, `starting`, `stale` or `outdated` |
+| `NODEDASH_UPDATE_CHECK` | _(empty)_                 | `0` turns off the daily lookup of the latest Bitcoin Core release (see [Upgrade advice](#upgrade-advice)) |
 | `NODEDASH_CONTROL`     | _(empty)_                  | `1` turns on [node control](#node-control): stop, start and restart Bitcoin Core    |
 | `BITCOIN_SERVICE`      | `bitcoind.service`         | The systemd service of Bitcoin Core, for node control                               |
 | `NODEDASH_HOSTS`       | _(empty)_                  | Extra host names, comma separated, on which node control may be used (see below)    |
@@ -229,7 +230,7 @@ The circle shows the most severe of these rules, with the reasons listed underne
 | Status          | When                                                                                   |
 | --------------- | -------------------------------------------------------------------------------------- |
 | **Problem**     | No outgoing connections · less than 10 GB free on the disk with blockchain data        |
-| **Attention**   | 1–3 outgoing connections · initial sync · more than 2 blocks behind the known headers · no new block for more than 60 minutes · less than 50 GB free on the disk |
+| **Attention**   | 1–3 outgoing connections · initial sync · more than 2 blocks behind the known headers · no new block for more than 60 minutes · less than 50 GB free on the disk · a Bitcoin Core version that no longer gets security fixes |
 | **Starting**    | Bitcoin Core is starting up (loading the block index, verifying blocks, …); its own progress message is shown |
 | **Unreachable** | The dashboard can't reach Bitcoin Core (last known values stay visible, dimmed)        |
 | **Healthy**     | None of the above                                                                      |
@@ -240,13 +241,35 @@ the size of your disk: 50 GB free lasts months, 10 GB weeks. On small disks, suc
 limits are 10% and 5% of the disk instead, if that is less.
 The thresholds live in [`internal/health/health.go`](internal/health/health.go).
 
+### Upgrade advice
+
+The Blockchain tile shows which node software runs, e.g. "Bitcoin Core 32.1". For Bitcoin Core, the dashboard
+also says when to upgrade:
+
+- **A newer release exists:** the tile says so, e.g. "Bitcoin Core 32.0 · 32.1 available". The status doesn't
+  change.
+- **Your version no longer gets security fixes:** the status becomes **Attention**. Bitcoin Core maintains the
+  latest three major versions ([lifecycle](https://bitcoincore.org/en/lifecycle/)): with 32 as the latest, 30, 31
+  and 32 get fixes, and 29 and older don't.
+
+To know the latest release, the dashboard server asks GitHub once a day
+(`api.github.com/repos/bitcoin/bitcoin/releases/latest`), and an hour later when that fails.
+
+- **What it reveals:** GitHub sees your IP address asking for the latest Bitcoin Core release. Nothing about your
+  node is sent.
+- **Without internet:** you see the version without advice.
+- **Turning it off:** set `NODEDASH_UPDATE_CHECK=0` (`sudo systemctl edit node-dash`,
+  `Environment=NODEDASH_UPDATE_CHECK=0`).
+
+Bitcoin Knots and other node software are shown by name, without upgrade advice.
+
 ## Development
 
 Requirements: Go 1.26+ and Node.js 26 (see `.nvmrc`; run `nvm use`).
 
 ```bash
 make run                 # build everything and run on mock data at http://localhost:8080
-make run MOCK=warning    # other scenarios: healthy, syncing, warning, error, unreachable, starting, stale
+make run MOCK=warning    # other scenarios: healthy, syncing, warning, error, unreachable, starting, stale, outdated
 make run CONTROL=1       # with node control on a simulated systemd
 make run MOCK=           # connect to Bitcoin Core instead (see Configuration)
 make test                # Go tests + frontend type check

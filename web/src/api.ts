@@ -19,6 +19,10 @@ export interface NodeData {
     diskFreeBytes: number
     diskTotalBytes: number
   }
+  /** The node software, e.g. label "Bitcoin Core 32.1" (story #24). */
+  software?: { name: string; version: string; label: string }
+  /** Upgrade advice; null when there is none to give. */
+  upgrade?: { latest: string; available: boolean; endOfLife: boolean } | null
 }
 
 export interface Snapshot {

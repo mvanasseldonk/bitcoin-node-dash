@@ -18,6 +18,18 @@ interface Single {
   big: string
   line: string
   tone: Tone
+  /** An extra small line under the tile, e.g. the node software. */
+  extra?: { text: string; tone: Tone }
+}
+
+/** "Bitcoin Core 32.1 · 32.2 available", or null without software info. */
+export function softwareLine(data: NodeData): { text: string; tone: Tone } | null {
+  const label = data.software?.label
+  if (!label) return null
+  const u = data.upgrade
+  if (u?.endOfLife) return { text: `${label} · no security fixes`, tone: 'warning' }
+  if (u?.available) return { text: `${label} · ${u.latest} available`, tone: 'muted' }
+  return { text: label, tone: 'muted' }
 }
 
 export function blockchainTile(bc: NodeData['blockchain'], now: number): Single {
@@ -71,6 +83,7 @@ function SingleTile({ title, tile }: { title: string; tile: Single }) {
       <h2 class="tile-title">{title}</h2>
       <span class={`tile-big tone-${tile.tone}`}>{tile.big}</span>
       <span class="tile-line">{tile.line}</span>
+      {tile.extra && <span class={`tile-line small tile-extra tone-${tile.extra.tone}`}>{tile.extra.text}</span>}
     </section>
   )
 }
@@ -124,7 +137,7 @@ function NetworkTile({ network }: { network: NodeData['network'] }) {
 export function Tiles({ data, now }: { data: NodeData; now: number }) {
   return (
     <div class="tiles">
-      <SingleTile title="Blockchain" tile={blockchainTile(data.blockchain, now)} />
+      <SingleTile title="Blockchain" tile={{ ...blockchainTile(data.blockchain, now), extra: softwareLine(data) ?? undefined }} />
       <NetworkTile network={data.network} />
       <SingleTile title="Server" tile={serverTile(data.server)} />
     </div>

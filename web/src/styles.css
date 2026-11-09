@@ -196,6 +196,14 @@ body {
 .tile-line.small {
   font-size: 14px;
 }
+.tile-extra {
+  margin-top: 6px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.tile-extra.tone-muted {
+  color: var(--muted);
+}
 
 .halves {
   display: flex;

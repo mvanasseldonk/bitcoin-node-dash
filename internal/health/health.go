@@ -106,6 +106,12 @@ func findings(d *model.NodeData, now time.Time) []finding {
 		}
 	}
 
+	// Software that no longer gets security fixes (story #24). A newer release
+	// alone isn't a reason for attention.
+	if u := d.Upgrade; u != nil && u.EndOfLife {
+		fs = append(fs, finding{model.Warning, d.Software.Label + " no longer gets security fixes · upgrade to " + u.Latest})
+	}
+
 	return fs
 }
 

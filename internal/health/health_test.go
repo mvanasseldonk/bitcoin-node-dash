@@ -76,6 +76,16 @@ func TestEvaluate(t *testing.T) {
 		{"small disk, 5 GB free", func(d *model.NodeData) { d.Server = model.Server{DiskFreeBytes: 5 * gb, DiskTotalBytes: 64 * gb} }, model.Warning, []string{"Low disk space: 5 GB free"}},
 		{"small disk, 3 GB free", func(d *model.NodeData) { d.Server = model.Server{DiskFreeBytes: 3 * gb, DiskTotalBytes: 64 * gb} }, model.Error, []string{"Disk almost full: 3 GB free"}},
 
+		// Software (story #24): only end of life needs attention.
+		{"newer release available is fine", func(d *model.NodeData) {
+			d.Software = model.Software{Name: "Bitcoin Core", Label: "Bitcoin Core 32.0"}
+			d.Upgrade = &model.Upgrade{Latest: "32.1", Available: true}
+		}, model.Healthy, []string{}},
+		{"end of life", func(d *model.NodeData) {
+			d.Software = model.Software{Name: "Bitcoin Core", Label: "Bitcoin Core 28.1"}
+			d.Upgrade = &model.Upgrade{Latest: "32.1", Available: true, EndOfLife: true}
+		}, model.Warning, []string{"Bitcoin Core 28.1 no longer gets security fixes · upgrade to 32.1"}},
+
 		{"errors before warnings", func(d *model.NodeData) {
 			d.Blockchain.LastBlockTime = now.Add(-74 * time.Minute)
 			d.Network = model.Network{}
