@@ -126,12 +126,15 @@ The circle shows the most severe of these rules, with the reasons listed underne
 
 | Status          | When                                                                                   |
 | --------------- | -------------------------------------------------------------------------------------- |
-| **Problem**     | No outgoing connections · disk with blockchain data more than 95% full                |
-| **Attention**   | 1–3 outgoing connections · initial sync · more than 2 blocks behind the known headers · no new block for more than 60 minutes · disk more than 90% full |
+| **Problem**     | No outgoing connections · less than 10 GB free on the disk with blockchain data        |
+| **Attention**   | 1–3 outgoing connections · initial sync · more than 2 blocks behind the known headers · no new block for more than 60 minutes · less than 50 GB free on the disk |
 | **Unreachable** | The dashboard can't reach Bitcoin Core (last known values stay visible, dimmed)        |
 | **Healthy**     | None of the above                                                                      |
 
 Incoming connections never affect the status: they need an open port and are optional.
+Disk limits are in GB because the blockchain grows by a fixed amount (roughly 60–90 GB a year), whatever
+the size of your disk: 50 GB free lasts months, 10 GB weeks. On small disks, such as pruned nodes, the
+limits are 10% and 5% of the disk instead, if that is less.
 The thresholds live in [`internal/health/health.go`](internal/health/health.go).
 
 ## Development

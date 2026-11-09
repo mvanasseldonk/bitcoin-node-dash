@@ -68,7 +68,7 @@ func (m *Mock) Fetch(ctx context.Context) (*model.NodeData, error) {
 		d.Server.DiskFreeBytes = 1_340 * gb
 	case "warning":
 		d.Blockchain.LastBlockTime = now.Add(-74 * time.Minute)
-		d.Server.DiskFreeBytes = 152 * gb
+		d.Server.DiskFreeBytes = 38 * gb
 	case "error":
 		d.Network = model.Network{Outbound: 0, Inbound: 0}
 	}
