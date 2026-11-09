@@ -69,10 +69,47 @@ services:
 
 Bitcoin Core must accept RPC from the dashboard container (`rpcbind` / `rpcallowip`).
 
-### Binary (without Docker)
+### Without Docker (Linux with systemd)
+
+Run this on the machine where Bitcoin Core runs:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/mvanasseldonk/bitcoin-node-dash/main/install.sh | sh
+```
+
+The script:
+
+- finds the user that runs `bitcoind` and its data directory, and shows what it found;
+- downloads the latest release for your CPU (x86-64 or ARM64) and checks it against `checksums.txt`;
+- installs `/usr/local/bin/node-dash` and a systemd service that starts with your server;
+- prints the dashboard's address, and the command to open the port if the ufw firewall is active.
+
+It uses `sudo` for the install steps. Settings, put before `sh`:
+`VERSION=v0.2.0` for a specific release, `NODEDASH_USER=bitcoin` and `BITCOIN_DATADIR=/path/to/.bitcoin`
+when the script can't find `bitcoind`.
+
+**Update:** run the same command again. It does nothing when you are up to date. If you changed
+`/etc/systemd/system/node-dash.service` (or installed it by hand), it keeps your version.
+
+**Uninstall** (your Bitcoin data is never touched):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/mvanasseldonk/bitcoin-node-dash/main/install.sh | sh -s -- --uninstall
+```
+
+Prefer to read a script before running it?
+
+```bash
+curl -fsSLO https://raw.githubusercontent.com/mvanasseldonk/bitcoin-node-dash/main/install.sh
+less install.sh
+sh install.sh
+```
+
+#### By hand
 
 Download the archive for your platform from the [latest release](https://github.com/mvanasseldonk/bitcoin-node-dash/releases/latest),
-for example `node-dash_v0.1.0_linux_amd64.tar.gz`, and run it as the user that runs Bitcoin Core:
+for example `node-dash_v0.2.0_linux_amd64.tar.gz`, check it with `sha256sum -c --ignore-missing checksums.txt`,
+and run it as the user that runs Bitcoin Core:
 
 ```bash
 tar -xzf node-dash_*_linux_amd64.tar.gz
@@ -88,8 +125,6 @@ sudo install -m 0755 node-dash /usr/local/bin/node-dash
 sudo cp node-dash.service /etc/systemd/system/
 sudo systemctl daemon-reload && sudo systemctl enable --now node-dash
 ```
-
-Check the archive against `checksums.txt` from the release with `sha256sum -c --ignore-missing checksums.txt`.
 
 ## Configuration
 

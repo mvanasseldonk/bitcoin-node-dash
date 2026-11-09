@@ -35,3 +35,61 @@ jobs:
 
       - name: Build binary
         run: go build -trimpath -o bin/node-dash ./cmd/node-dash
+
+  # install.sh on a real systemd host: install an older release, update,
+  # re-run (no-op), keep a changed unit, uninstall. A fake bitcoind process
+  # (perl renaming itself) lets the script detect the user and data directory.
+  install-script:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: ShellCheck
+        run: shellcheck install.sh
+
+      - name: Fake bitcoind
+        run: |
+          sudo useradd --create-home bitcoin
+          sudo -u bitcoin mkdir -p /home/bitcoin/.bitcoin
+          sudo -u bitcoin sh -c 'nohup perl -e "\$0 = q{/usr/local/bin/bitcoind -daemon -datadir=/home/bitcoin/.bitcoin}; sleep 3600" >/dev/null 2>&1 &'
+          sleep 1
+          ps -eo uid=,args= | grep '[b]itcoind'
+
+      - name: Install an older release
+        run: |
+          VERSION=v0.1.0 sh install.sh
+          test "$(node-dash version)" = v0.1.0
+          systemctl is-active node-dash
+          grep -x 'User=bitcoin' /etc/systemd/system/node-dash.service
+          grep -x 'Environment=BITCOIN_DATADIR=/home/bitcoin/.bitcoin' /etc/systemd/system/node-dash.service
+          curl -fsS http://127.0.0.1:8080/healthz
+
+      - name: Update to the latest release
+        run: |
+          latest=$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/${{ github.repository }}/releases/latest)
+          latest=${latest##*/}
+          sh install.sh | tee out.txt
+          grep -q "Updating node-dash v0.1.0 → $latest" out.txt
+          test "$(node-dash version)" = "$latest"
+          systemctl is-active node-dash
+
+      - name: Running again changes nothing
+        run: |
+          sh install.sh | tee out.txt
+          grep -q 'already installed and up to date' out.txt
+
+      - name: A changed unit is kept
+        run: |
+          sudo sed -i 's/^RestartSec=5$/RestartSec=7/' /etc/systemd/system/node-dash.service
+          VERSION=v0.1.0 sh install.sh | tee out.txt
+          grep -q 'Kept /etc/systemd/system/node-dash.service' out.txt
+          grep -x 'RestartSec=7' /etc/systemd/system/node-dash.service
+          test "$(node-dash version)" = v0.1.0
+
+      - name: Uninstall
+        run: |
+          sh install.sh --uninstall
+          test ! -e /usr/local/bin/node-dash
+          test ! -e /etc/systemd/system/node-dash.service
+          if systemctl is-active --quiet node-dash; then echo "service still running"; exit 1; fi
+          test -d /home/bitcoin/.bitcoin
