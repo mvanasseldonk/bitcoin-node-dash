@@ -1,10 +1,12 @@
 package poller
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -91,5 +93,53 @@ func TestSlowSourceTimesOut(t *testing.T) {
 	}
 	if s := p.Snapshot(); s.Reachable {
 		t.Fatalf("expected unreachable after timeout, got %+v", s)
+	}
+}
+
+func TestLogsEachProblemOnce(t *testing.T) {
+	var buf bytes.Buffer
+	src := &fakeSource{err: errors.New("bitcoin core rejected the RPC credentials")}
+	p := New(src, time.Second, 50*time.Millisecond, slog.New(slog.NewTextHandler(&buf, nil)))
+	count := func(s string) int { return strings.Count(buf.String(), s) }
+	poll := func(n int) {
+		for range n {
+			p.Poll(context.Background())
+		}
+	}
+
+	// Unreachable from the start: one warning, not one per poll.
+	poll(3)
+	if got := count("node unreachable"); got != 1 {
+		t.Fatalf("after 3 failed polls: %d warnings, want 1\n%s", got, buf.String())
+	}
+
+	// A different cause is logged once.
+	src.err = errors.New("connection refused")
+	poll(3)
+	if got := count("connection refused"); got != 1 {
+		t.Fatalf("new cause logged %d times, want 1\n%s", got, buf.String())
+	}
+
+	// Back online: logged once.
+	src.err, src.data = nil, &model.NodeData{}
+	poll(3)
+	if got := count("node reachable again"); got != 1 {
+		t.Fatalf("recovery logged %d times, want 1\n%s", got, buf.String())
+	}
+
+	// Lost again after being reachable: one new warning.
+	src.err = errors.New("connection refused")
+	poll(3)
+	if got := count("node unreachable"); got != 3 {
+		t.Fatalf("%d warnings in total, want 3\n%s", got, buf.String())
+	}
+}
+
+func TestReachableFromStartLogsNoRecovery(t *testing.T) {
+	var buf bytes.Buffer
+	p := New(&fakeSource{data: &model.NodeData{}}, time.Second, 50*time.Millisecond, slog.New(slog.NewTextHandler(&buf, nil)))
+	p.Poll(context.Background())
+	if strings.Contains(buf.String(), "reachable again") {
+		t.Fatalf("unexpected recovery message:\n%s", buf.String())
 	}
 }

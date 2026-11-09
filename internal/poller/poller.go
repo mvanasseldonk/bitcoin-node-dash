@@ -24,6 +24,9 @@ type Poller struct {
 
 	mu   sync.RWMutex
 	snap model.Snapshot
+	// lastErr is the message of the error that was logged last, or "" while
+	// the node is reachable. Used to log each problem once instead of on every poll.
+	lastErr string
 }
 
 // New returns a Poller. Call Run to start polling.
@@ -63,15 +66,18 @@ func (p *Poller) Poll(ctx context.Context) {
 	defer p.mu.Unlock()
 	p.snap.CheckedAt = now
 	if err != nil {
-		if p.snap.Reachable || p.snap.UpdatedAt.IsZero() {
+		// Log a problem once, and again only when its cause changes.
+		if msg := err.Error(); msg != p.lastErr {
 			p.log.Warn("node unreachable", "err", err)
+			p.lastErr = msg
 		}
 		p.snap.Reachable = false
 		p.snap.Health = health.Unreachable()
 		return // keep the last known data
 	}
-	if !p.snap.Reachable && !p.snap.UpdatedAt.IsZero() {
+	if p.lastErr != "" {
 		p.log.Info("node reachable again")
+		p.lastErr = ""
 	}
 	p.snap.Reachable = true
 	p.snap.UpdatedAt = now
