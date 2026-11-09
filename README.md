@@ -185,6 +185,22 @@ cd web && npm run dev                          # UI on :5173, proxies /api to :8
 - `GET /healthz` reports whether the dashboard itself is running; `node-dash healthcheck` calls it
   (used by the Docker `HEALTHCHECK`).
 
+### Resource usage
+
+The dashboard is built to stay out of your node's way:
+
+- It polls Bitcoin Core once every 10 seconds with two lightweight calls (`getblockchaininfo` and
+  `getnetworkinfo`), however many browser tabs are open. Tests guard both.
+- Measured idle: about **11 MB** memory and **0.0% CPU** (0.01 s of CPU time per minute); about 14 MB after
+  300 simultaneous requests. The Docker image is about 10 MB.
+- CI fails if the container uses 100 MB or more. The systemd unit and the Compose example cap memory at 128 MB.
+
+On your own node, the service's memory and average CPU use since it started:
+
+```bash
+pid=$(systemctl show -p MainPID --value node-dash); echo "Memory: $(( $(ps -o rss= -p $pid) / 1024 )) MB"; ps -o etimes=,cputimes= -p $pid | awk '{printf "CPU: %.3f%% on average over %d minutes\n", 100*$2/$1, $1/60}'
+```
+
 ## License
 
 MIT
