@@ -106,20 +106,35 @@ func run(log *slog.Logger) error {
 	defer stop()
 
 	p := poller.New(src, pollInterval, fetchTimeout, log)
+	// The dashboard's own version and latest release (story #39).
+	dashVersion := version
+	var dashLatest release.Latest // nil: no update check
 	switch {
 	case os.Getenv("NODEDASH_MOCK") != "":
 		p.UseReleases(release.Fixed{Major: 32, Minor: 1})
+		dashVersion, dashLatest = mockDashboard(os.Getenv("NODEDASH_MOCK"), version)
 	case os.Getenv("NODEDASH_UPDATE_CHECK") == "0":
-		log.Info("update check off: no upgrade advice")
+		log.Info("update check off: no upgrade advice, no notice of new dashboard versions")
 	default:
 		// Once a day, ask GitHub for the latest Bitcoin Core release (story #24).
 		checker := release.NewChecker(version, log)
 		go checker.Run(ctx)
 		p.UseReleases(checker)
+		// And for the dashboard's own, unless this is a local build.
+		if _, ok := release.ParseVersion(version); ok {
+			own := release.NewDashboardChecker(version, log)
+			go own.Run(ctx)
+			dashLatest = own
+		}
 	}
 	go p.Run(ctx)
 
-	opts := []server.Option{server.WithName(name)}
+	// The Docker image sets NODEDASH_DOCKER=1: it is updated by pulling the image.
+	inDocker := os.Getenv("NODEDASH_DOCKER") == "1"
+	opts := []server.Option{
+		server.WithName(name),
+		server.WithDashboard(func() model.Dashboard { return release.Dashboard(dashVersion, dashLatest, inDocker) }),
+	}
 	if os.Getenv("NODEDASH_ANCORO") == "0" {
 		opts = append(opts, server.WithoutAncoro())
 	}
@@ -178,6 +193,20 @@ func run(log *slog.Logger) error {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	return srv.Shutdown(shutdownCtx)
+}
+
+// mockDashboard pretends a released version in mock mode, so the dashboard's
+// version row can be seen in a local build: "outdated" has a newer release.
+func mockDashboard(scenario, version string) (string, release.Latest) {
+	own, ok := release.ParseVersion(version)
+	if !ok {
+		own = release.Release{Minor: 5}
+	}
+	latest := own
+	if scenario == "outdated" {
+		latest = release.Release{Major: own.Major, Minor: own.Minor + 1}
+	}
+	return own.Tag(), release.Fixed(latest)
 }
 
 // newSource returns the mock source when NODEDASH_MOCK is set,

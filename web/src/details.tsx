@@ -6,10 +6,11 @@ import { useEffect, useState } from 'preact/hooks'
 import { fetchDetails, type Details, type Snapshot } from './api'
 import { ago, formatBytes, formatRate, isZeroTime, longDuration } from './format'
 import { softwareLine } from './tiles'
+import { DashboardRow, UpdateBox } from './update'
 
 const REFRESH_MS = 5_000
 
-export type Section = 'blockchain' | 'network' | 'server'
+export type Section = 'blockchain' | 'network' | 'server' | 'dashboard'
 
 const CHAINS: Record<string, string> = {
   main: 'Mainnet',
@@ -100,11 +101,16 @@ interface Props {
 export function DetailsPage({ snap, now, section }: Props) {
   const { details, lastNode, error } = useDetails()
 
-  // Open at the section of the tile the link came from.
+  // Open at the section of the tile the link came from. Once the numbers
+  // arrive, the rows above it grow, so scroll there again.
+  const loaded = !!details || !!error
+  const hasDash = snap?.dashboard != null
   useEffect(() => {
-    if (section) document.getElementById(`details-${section}`)?.scrollIntoView({ block: 'start' })
+    // The Dashboard row needs a snapshot; until then, open at the Server section.
+    const el = section && (document.getElementById(`details-${section}`) ?? document.getElementById('details-server'))
+    if (el) el.scrollIntoView({ block: 'start' })
     else window.scrollTo(0, 0)
-  }, [section])
+  }, [section, loaded, hasDash])
 
   const data = snap?.data
   const bc = data?.blockchain
@@ -113,6 +119,7 @@ export function DetailsPage({ snap, now, section }: Props) {
   const d: NodeParts | null =
     details?.blockchain && details.network ? { blockchain: details.blockchain, network: details.network } : lastNode
   const srv = details?.server
+  const dash = snap?.dashboard
   const software = data ? softwareLine(data) : null
   const inbound = net?.inbound ?? 0
   const peers = net ? net.outbound + net.inbound : null
@@ -195,7 +202,9 @@ export function DetailsPage({ snap, now, section }: Props) {
         </h2>
         <dl class="detail-rows">
           <ServerRows srv={srv} />
+          {dash && <DashboardRow dash={dash} />}
         </dl>
+        {dash?.available && <UpdateBox dash={dash} />}
       </section>
     </div>
   )
@@ -238,7 +247,7 @@ export function useRoute(): { page: 'dashboard' } | { page: 'details'; section: 
     window.addEventListener('hashchange', on)
     return () => window.removeEventListener('hashchange', on)
   }, [])
-  const m = hash.match(/^#\/details(?:\/(blockchain|network|server))?$/)
+  const m = hash.match(/^#\/details(?:\/(blockchain|network|server|dashboard))?$/)
   if (!m) return { page: 'dashboard' }
   return { page: 'details', section: (m[1] as Section | undefined) ?? null }
 }

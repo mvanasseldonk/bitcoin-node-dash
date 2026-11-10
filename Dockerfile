@@ -28,8 +28,10 @@ RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
 FROM gcr.io/distroless/static-debian13:nonroot
 COPY --from=build /out/node-dash /usr/local/bin/node-dash
 
+# NODEDASH_DOCKER tells the dashboard to show the Docker update command (#39).
 ENV NODEDASH_LISTEN=:8080 \
-    BITCOIN_DATADIR=/bitcoin
+    BITCOIN_DATADIR=/bitcoin \
+    NODEDASH_DOCKER=1
 
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \

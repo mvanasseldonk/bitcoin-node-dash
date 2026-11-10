@@ -101,6 +101,32 @@ type Snapshot struct {
 	// ServerTime is the dashboard server's clock when the snapshot was served.
 	// Browsers use it to measure data age without trusting their own clock.
 	ServerTime time.Time `json:"serverTime"`
+	// Dashboard is about the dashboard itself: its version and whether a
+	// newer release exists (story #39). Set when the snapshot is served.
+	Dashboard *Dashboard `json:"dashboard,omitempty"`
+}
+
+// Whether the dashboard looks up its own latest release.
+const (
+	CheckOn    = "on"
+	CheckOff   = "off"   // NODEDASH_UPDATE_CHECK=0
+	CheckLocal = "local" // a local build ("dev"): there is no release to compare with
+)
+
+// Dashboard is the version of the dashboard and its latest release.
+type Dashboard struct {
+	// Version is the running version, e.g. "v0.5.0", or "dev" for a local build.
+	Version string `json:"version"`
+	// Check is CheckOn, CheckOff or CheckLocal.
+	Check string `json:"check"`
+	// Latest is the latest release, e.g. "v0.6.0"; empty while unknown.
+	Latest string `json:"latest,omitempty"`
+	// Available is true when Latest is newer than Version.
+	Available bool `json:"available"`
+	// URL is the page of the latest release, when it is newer.
+	URL string `json:"url,omitempty"`
+	// Docker is true in the Docker image, which is updated another way.
+	Docker bool `json:"docker"`
 }
 
 // Details are the extra numbers for the details page (story #14). They are

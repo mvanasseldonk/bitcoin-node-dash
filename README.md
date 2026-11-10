@@ -151,7 +151,7 @@ The password is never logged.
 | `BITCOIN_RPC_USER`     | _(empty)_                  | RPC user; when set, used instead of `bitcoin.conf` and the cookie file              |
 | `BITCOIN_RPC_PASSWORD` | _(empty)_                  | RPC password for `BITCOIN_RPC_USER`                                                 |
 | `NODEDASH_MOCK`        | _(empty)_                  | Run on mock data: `healthy`, `syncing`, `warning`, `error`, `unreachable`, `starting`, `stale`, `outdated` or `live` (a new block every 30 s) |
-| `NODEDASH_UPDATE_CHECK` | _(empty)_                 | `0` turns off the daily lookup of the latest Bitcoin Core release (see [Upgrade advice](#upgrade-advice)) |
+| `NODEDASH_UPDATE_CHECK` | _(empty)_                 | `0` turns off the daily lookup of the latest Bitcoin Core and node-dash releases (see [Upgrade advice](#upgrade-advice) and [New dashboard versions](#new-dashboard-versions)) |
 | `NODEDASH_CONTROL`     | _(empty)_                  | `1` turns on [node control](#node-control): stop, start and restart Bitcoin Core    |
 | `BITCOIN_SERVICE`      | `bitcoind.service`         | The systemd service of Bitcoin Core, for node control                               |
 | `NODEDASH_HOSTS`       | _(empty)_                  | Extra host names, comma separated, on which node control may be used (see below)    |
@@ -233,7 +233,8 @@ The **Details** link on each tile opens a page with the numbers behind it:
   the blockchain data.
 - **Network:** peers per network (IPv4, IPv6, Tor, I2P, CJDNS), data sent and received, and the current upload and
   download rate.
-- **Server:** CPU usage, memory, the disk with the blockchain data, CPU temperature and uptime. They come from Linux
+- **Server:** CPU usage, memory, the disk with the blockchain data, CPU temperature and uptime, and the dashboard's
+  own version (see [New dashboard versions](#new-dashboard-versions)). The figures come from Linux
   (`/proc` and `/sys`), so they also show while Bitcoin Core is down.
   - **In Docker:** the figures are the host's, because a container shares its kernel. The CPU temperature is often
     missing in Docker.
@@ -274,6 +275,20 @@ through. The dashboard itself never shows addresses or transactions.
 - **The link doesn't tell Ancoro where your dashboard runs** (`noreferrer`).
 - **To hide it,** set `NODEDASH_ANCORO=0`.
 
+## New dashboard versions
+
+The **Dashboard** row on the details page (under Server) shows which version of the dashboard runs. When a newer
+release exists, a quiet line under the tiles says so, e.g. "node-dash v0.6.0 is available", with links to what's
+new and to the update command. The dashboard can't update itself; you run the command:
+
+- **Without Docker:** the install command again, on the server. It keeps your settings.
+- **With Docker Compose:** `docker compose pull && docker compose up -d`, next to your `docker-compose.yml`.
+
+The details page shows the command with a copy button. To know the latest release, the dashboard server asks
+GitHub once a day (`api.github.com/repos/mvanasseldonk/bitcoin-node-dash/releases/latest`), together with the
+[Bitcoin Core lookup](#upgrade-advice). `NODEDASH_UPDATE_CHECK=0` turns off both. A build of your own (version `dev`)
+never asks.
+
 ## Status rules
 
 The circle shows the most severe of these rules, with the reasons listed underneath:
@@ -306,8 +321,8 @@ also says when to upgrade:
 To know the latest release, the dashboard server asks GitHub once a day
 (`api.github.com/repos/bitcoin/bitcoin/releases/latest`), and an hour later when that fails.
 
-- **What it reveals:** GitHub sees your IP address asking for the latest Bitcoin Core release. Nothing about your
-  node is sent.
+- **What it reveals:** GitHub sees your IP address asking for the latest Bitcoin Core release, and for the latest
+  node-dash release. Nothing about your node is sent.
 - **Without internet:** you see the version without advice.
 - **Turning it off:** set `NODEDASH_UPDATE_CHECK=0` (`sudo systemctl edit node-dash`,
   `Environment=NODEDASH_UPDATE_CHECK=0`).

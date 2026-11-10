@@ -33,6 +33,23 @@ export interface Snapshot {
   data: NodeData | null
   /** The server's clock when this snapshot was served. */
   serverTime?: string
+  /** The dashboard's own version and latest release (story #39). */
+  dashboard?: Dashboard
+}
+
+/** Mirrors model.Dashboard. */
+export interface Dashboard {
+  /** The running version, e.g. "v0.5.0", or "dev" for a local build. */
+  version: string
+  /** on; off with NODEDASH_UPDATE_CHECK=0; local for a local build. */
+  check: 'on' | 'off' | 'local'
+  /** The latest release, e.g. "v0.6.0", once known. */
+  latest?: string
+  available: boolean
+  /** The latest release's page on GitHub, when it is newer. */
+  url?: string
+  /** In the Docker image, which is updated by pulling a new image. */
+  docker: boolean
 }
 
 /** A request that hangs longer than this counts as a failure. */

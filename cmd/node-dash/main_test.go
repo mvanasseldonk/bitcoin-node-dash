@@ -22,3 +22,17 @@ func TestAppName(t *testing.T) {
 		}
 	}
 }
+
+func TestMockDashboard(t *testing.T) {
+	for _, tc := range []struct{ scenario, version, wantVersion, wantLatest string }{
+		{"outdated", "dev", "v0.5.0", "v0.6.0"},
+		{"outdated", "v0.7.2", "v0.7.2", "v0.8.0"},
+		{"healthy", "dev", "v0.5.0", "v0.5.0"},
+	} {
+		v, latest := mockDashboard(tc.scenario, tc.version)
+		r, _ := latest.Latest()
+		if v != tc.wantVersion || r.Tag() != tc.wantLatest {
+			t.Errorf("%s %s: got %s, latest %s; want %s, %s", tc.scenario, tc.version, v, r.Tag(), tc.wantVersion, tc.wantLatest)
+		}
+	}
+}

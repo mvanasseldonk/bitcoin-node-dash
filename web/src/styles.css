@@ -811,25 +811,93 @@ body {
 }
 
 /* Link to Ancoro (#44): quiet, so the node's status stays the main thing. */
+/* Quiet lines under the tiles: a new dashboard version (#39), Ancoro (#44). */
+.update-line,
 .ancoro {
   margin: 32px 0 0;
   color: var(--muted);
   font-size: 14px;
   text-align: center;
 }
-.ancoro a {
+.update-line + .ancoro {
+  margin-top: 8px;
+}
+.update-line a {
+  white-space: nowrap; /* wrap between the links, not inside one */
+}
+.update-line a,
+.ancoro a,
+.update-box a {
   color: var(--ink);
   text-decoration: underline;
   text-decoration-color: var(--faint);
   text-underline-offset: 3px;
 }
-.ancoro a:hover {
+.update-line a:hover,
+.ancoro a:hover,
+.update-box a:hover {
   text-decoration-color: currentColor;
 }
-.ancoro a:focus-visible {
+.update-line a:focus-visible,
+.ancoro a:focus-visible,
+.update-box a:focus-visible,
+.copy-button:focus-visible {
   outline: 2px solid var(--ink);
   outline-offset: 2px;
   border-radius: 4px;
+}
+.copy-button:focus-visible {
+  border-radius: 999px;
+}
+
+/* The Dashboard row's update (#39): the command, a copy button, what's new. */
+.detail-hint-news {
+  color: var(--ink);
+}
+.update-box {
+  margin-top: 14px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: var(--bg);
+  font-size: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.update-box p {
+  margin: 0;
+}
+.update-box pre {
+  margin: 0;
+  white-space: pre-wrap;
+  /* Break at spaces first; the long URL may break anywhere. */
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.update-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.copy-button {
+  height: 44px;
+  padding: 0 16px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+.copy-button:hover {
+  border-color: var(--faint);
 }
 .sr-only {
   position: absolute;
