@@ -24,6 +24,12 @@ func withName(index []byte, name string) []byte {
 	return out
 }
 
+// The meta tag in index.html that shows the link to Ancoro (story #44).
+const (
+	ancoroOn  = `name="nodedash-ancoro" content="on"`
+	ancoroOff = `name="nodedash-ancoro" content="off"`
+)
+
 type manifest struct {
 	ID              string `json:"id"`
 	Name            string `json:"name"`

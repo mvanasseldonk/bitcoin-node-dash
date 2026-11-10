@@ -74,3 +74,14 @@ func TestManifest(t *testing.T) {
 		}
 	}
 }
+
+func TestAncoroLink(t *testing.T) {
+	on := get(New(fixedSnapshot{}, sourceIndex(t)), http.MethodGet, "/").Body.String()
+	if !strings.Contains(on, ancoroOn) {
+		t.Errorf("by default the page must show the Ancoro link (%s)", ancoroOn)
+	}
+	off := get(New(fixedSnapshot{}, sourceIndex(t), WithoutAncoro()), http.MethodGet, "/").Body.String()
+	if !strings.Contains(off, ancoroOff) || strings.Contains(off, ancoroOn) {
+		t.Errorf("WithoutAncoro: the page must hide the Ancoro link (%s)", ancoroOff)
+	}
+}
