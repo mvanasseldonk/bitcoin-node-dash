@@ -5,8 +5,9 @@ your node is healthy; it stays up when your node doesn't, and it barely uses any
 resources.
 
 - One status circle: **Healthy**, **Attention**, **Problem** or **Unreachable**, with the reasons in plain language
-- Three tiles: is the node in sync, how is it connected, how much disk space is left
-- Read-only: it only uses the RPC calls `getblockchaininfo` and `getnetworkinfo`
+- Four tiles: is the node in sync, how is it connected, how much disk space is left, and which fee gets a
+  transaction in within about 20 minutes
+- Read-only: it only uses read-only RPC calls, such as `getblockchaininfo`, `getnetworkinfo` and `getmempoolinfo`
 - Runs on your LAN only; no accounts, no tracking, no requests to the internet
 
 Requires Bitcoin Core 23 or newer.
@@ -152,7 +153,7 @@ The password is never logged.
 | `BITCOIN_RPC_COOKIE`   | `$BITCOIN_DATADIR/.cookie` | Cookie file for RPC authentication                                                  |
 | `BITCOIN_RPC_USER`     | _(empty)_                  | RPC user; when set, used instead of `bitcoin.conf` and the cookie file              |
 | `BITCOIN_RPC_PASSWORD` | _(empty)_                  | RPC password for `BITCOIN_RPC_USER`                                                 |
-| `NODEDASH_MOCK`        | _(empty)_                  | Run on mock data: `healthy`, `syncing`, `warning`, `error`, `unreachable`, `starting`, `stale`, `outdated` or `live` (a new block every 30 s) |
+| `NODEDASH_MOCK`        | _(empty)_                  | Run on mock data: `healthy`, `syncing`, `warning`, `error`, `unreachable`, `starting`, `stale`, `outdated`, `live` (a new block every 30 s), `busy` (a full mempool and high fees) or `restarted` (the mempool is still loading) |
 | `NODEDASH_UPDATE_CHECK` | _(empty)_                 | `0` turns off the daily lookup of the latest Bitcoin Core and node-dash releases (see [Upgrade advice](#upgrade-advice) and [New dashboard versions](#new-dashboard-versions)) |
 | `NODEDASH_CONTROL`     | _(empty)_                  | `1` turns on [node control](#node-control): stop, start and restart Bitcoin Core    |
 | `BITCOIN_SERVICE`      | `bitcoind.service`         | The systemd service of Bitcoin Core, for node control                               |
@@ -246,9 +247,28 @@ The **Details** link on each tile opens a page with the numbers behind it:
   - **On macOS:** only the disk.
 
   A figure that isn't available shows "—", with the reason.
+- **Mempool:** see below.
 
 These extra numbers are only fetched while the page is open, at most once every 4 seconds, however many people look.
 The page never shows addresses: not your node's, and not those of its peers.
+
+## Mempool and fees
+
+The **Mempool** tile shows the fee for a transaction to be confirmed within about 20 minutes (2 blocks), in sat/vB,
+with the number of transactions waiting and their size. Its details section adds the memory the mempool uses (of
+`maxmempool`), the minimum mempool and relay fees, and the estimates for ~20 minutes, ~1 hour (6 blocks) and ~1 day
+(144 blocks).
+
+- **Your own node:** everything comes from your node's `getmempoolinfo` and `estimatesmartfee` (economical mode).
+  No fee website is asked.
+- **Rounding:** fee rates under 10 sat/vB get one decimal ("0.1", "2.4"); higher ones are whole numbers.
+- **Missing estimates:** right after a start, during the initial sync, or with `blocksonly=1`, Bitcoin Core has no
+  estimates yet; they show "—" with "Not enough data yet". While the mempool loads after a start, it says
+  "Loading mempool…".
+- **Status:** the mempool never changes the status circle: a busy network says nothing about your node. If your
+  `rpcwhitelist` doesn't allow these calls, only the mempool shows "—"; the node stays reachable.
+- **Load:** `getmempoolinfo` runs with each poll. The fee estimates are asked again only after a new block, and at
+  most once a minute.
 
 ## Name and icon
 
@@ -384,7 +404,7 @@ Requirements: Go 1.26+ and Node.js 26 (see `.nvmrc`; run `nvm use`).
 
 ```bash
 make run                 # build everything and run on mock data at http://localhost:8080
-make run MOCK=warning    # other scenarios: healthy, syncing, warning, error, unreachable, starting, stale, outdated, live
+make run MOCK=warning    # other scenarios: healthy, syncing, warning, error, unreachable, starting, stale, outdated, live, busy, restarted
 make run CONTROL=1       # with node control on a simulated systemd
 make run MOCK=           # connect to Bitcoin Core instead (see Configuration)
 make test                # Go tests + frontend type check
@@ -417,8 +437,9 @@ cd web && npm run dev                          # UI on :5173, proxies /api to :8
 
 The dashboard is built to stay out of your node's way:
 
-- It polls Bitcoin Core once every 10 seconds with two lightweight calls (`getblockchaininfo` and
-  `getnetworkinfo`), however many browser tabs are open. Tests guard both.
+- It polls Bitcoin Core once every 10 seconds with three lightweight calls (`getblockchaininfo`,
+  `getnetworkinfo` and `getmempoolinfo`), however many browser tabs are open, and asks for the three fee
+  estimates only after a new block. Tests guard this.
 - Measured idle: about **11 MB** memory and **0.0% CPU** (0.01 s of CPU time per minute); about 14 MB after
   300 simultaneous requests. The Docker image is about 10 MB.
 - CI fails if the container uses 100 MB or more. The systemd unit and the Compose example cap memory at 128 MB.

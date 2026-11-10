@@ -48,6 +48,8 @@ func fakeCore(t *testing.T, user, pass string, results map[string]string) *httpt
 var okResults = map[string]string{
 	"getblockchaininfo": `{"chain":"main","blocks":977412,"headers":977412,"verificationprogress":0.99999,"initialblockdownload":false,"time":1794200000}`,
 	"getnetworkinfo":    `{"version":320100,"subversion":"/Satoshi:32.1.0/","connections":16,"connections_in":6,"connections_out":10}`,
+	"getmempoolinfo":    mempoolInfo,
+	"estimatesmartfee":  `{"feerate":0.00004,"blocks":2}`,
 }
 
 func TestRPCFetchWithCookie(t *testing.T) {
@@ -148,7 +150,8 @@ func TestRPCStarting(t *testing.T) {
 }
 
 // TestRPCOnlyCheapCalls guards the polling loop against expensive RPC calls
-// (story #7): one fetch makes exactly these two lightweight calls.
+// (story #7): one fetch makes exactly these lightweight calls, and the fee
+// estimates only on the first fetch and after a new block (story #11).
 func TestRPCOnlyCheapCalls(t *testing.T) {
 	var methods []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -162,11 +165,15 @@ func TestRPCOnlyCheapCalls(t *testing.T) {
 	defer srv.Close()
 
 	r := NewRPC(RPCConfig{URL: srv.URL, User: "alice", Password: "pw"})
-	if _, err := r.Fetch(context.Background()); err != nil {
-		t.Fatal(err)
+	for range 2 {
+		if _, err := r.Fetch(context.Background()); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if got := strings.Join(methods, ","); got != "getblockchaininfo,getnetworkinfo" {
-		t.Fatalf("RPC calls per fetch = %s, want getblockchaininfo,getnetworkinfo", got)
+	const poll = "getblockchaininfo,getnetworkinfo,getmempoolinfo"
+	want := poll + ",estimatesmartfee,estimatesmartfee,estimatesmartfee," + poll
+	if got := strings.Join(methods, ","); got != want {
+		t.Fatalf("RPC calls for two fetches = %s, want %s", got, want)
 	}
 }
 

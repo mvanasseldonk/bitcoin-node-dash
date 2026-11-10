@@ -5,6 +5,8 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	"github.com/mvanasseldonk/bitcoin-node-dash/internal/model"
 )
 
 func TestMockScenarios(t *testing.T) {
@@ -30,6 +32,29 @@ func TestMockScenarios(t *testing.T) {
 		if err != nil || d == nil {
 			t.Fatalf("%s: got %v, %v", s, d, err)
 		}
+		if m := d.Mempool; m == nil || m.Transactions == 0 || len(m.Fees) != len(FeeTargets) {
+			t.Fatalf("%s: mempool = %+v", s, d.Mempool)
+		}
+	}
+}
+
+func TestMockMempool(t *testing.T) {
+	fetch := func(s string) *model.Mempool {
+		m, _ := NewMock(s)
+		d, err := m.Fetch(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		return d.Mempool
+	}
+	if m := fetch("restarted"); m.Loaded || m.Fees[0].Rate != nil {
+		t.Fatalf("restarted: want a loading mempool without estimates, got %+v", m)
+	}
+	if m := fetch("syncing"); !m.Loaded || m.Fees[0].Missing != FeeNoData {
+		t.Fatalf("syncing: want no estimates, got %+v", m)
+	}
+	if m := fetch("busy"); m.UsageBytes*100/m.MaxBytes < 95 || *m.Fees[0].Rate < 50 {
+		t.Fatalf("busy: want a full mempool and high fees, got %+v", m)
 	}
 }
 

@@ -21,8 +21,27 @@ export interface NodeData {
   }
   /** The node software, e.g. label "Bitcoin Core 32.1" (story #24). */
   software?: { name: string; version: string; label: string }
+  /** The mempool and fee estimates (story #11); null when not read. */
+  mempool?: Mempool | null
   /** Upgrade advice; null when there is none to give. */
   upgrade?: { latest: string; available: boolean; endOfLife: boolean } | null
+}
+
+/** Mirrors model.Mempool. Fee rates are in sat/vB, already rounded. */
+export interface Mempool {
+  /** Why the mempool is unknown; the other fields are then zero. */
+  error?: string
+  /** False while Bitcoin Core loads mempool.dat after a start. */
+  loaded: boolean
+  transactions: number
+  /** The sum of the transactions' virtual sizes. */
+  vbytes: number
+  usageBytes: number
+  maxBytes: number
+  minFee: number
+  minRelayFee: number
+  /** For 2, 6 and 144 blocks; rate is null when missing says why. */
+  fees: { blocks: number; rate: number | null; missing?: string }[] | null
 }
 
 export interface Snapshot {

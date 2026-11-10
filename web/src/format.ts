@@ -28,6 +28,17 @@ export function formatBytes(bytes: number): string {
   return `${Math.round(bytes / 1e6)} MB`
 }
 
+/** A fee rate in sat/vB, already rounded by the server: "0.1", "2.4", "4", "86". */
+export function formatFee(satPerVB: number): string {
+  return satPerVB.toLocaleString('en-US', { maximumFractionDigits: 1 })
+}
+
+/** Virtual megabytes: "7.4 vMB", "42 vMB". */
+export function formatVMB(vbytes: number): string {
+  const v = vbytes / 1e6
+  return `${v < 10 ? v.toFixed(1) : Math.round(v).toLocaleString('en-US')} vMB`
+}
+
 /** Local time as "21:14", from an ISO string or epoch milliseconds. */
 export function clockTime(t: string | number): string {
   return new Date(t).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })

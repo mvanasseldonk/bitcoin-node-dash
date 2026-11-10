@@ -41,6 +41,8 @@ type Poller struct {
 	lastErr string
 	// failures counts consecutive failed polls, for the backoff.
 	failures int
+	// mempoolErr is the mempool problem that was logged last, or "".
+	mempoolErr string
 }
 
 // New returns a Poller. Call Run to start polling.
@@ -124,11 +126,30 @@ func (p *Poller) Poll(ctx context.Context) {
 		p.log.Info("node reachable again")
 		p.lastErr = ""
 	}
+	p.logMempool(data.Mempool)
 	p.snap.Reachable = true
 	p.snap.UpdatedAt = now
 	data.Upgrade = release.Advise(data.Software, p.releases)
 	p.snap.Data = data
 	p.snap.Health = health.Evaluate(data, now)
+}
+
+// logMempool logs a mempool problem once, and when it is solved. The
+// mempool never changes the health (story #11).
+func (p *Poller) logMempool(m *model.Mempool) {
+	msg := ""
+	if m != nil {
+		msg = m.Error
+	}
+	if msg == p.mempoolErr {
+		return
+	}
+	if msg != "" {
+		p.log.Warn("mempool unavailable", "reason", msg)
+	} else if p.mempoolErr != "" {
+		p.log.Info("mempool available again")
+	}
+	p.mempoolErr = msg
 }
 
 func (p *Poller) fetch(ctx context.Context) (data *model.NodeData, err error) {

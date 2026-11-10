@@ -218,3 +218,23 @@ func TestUpgradeAdvice(t *testing.T) {
 		t.Fatalf("level = %s, want warning", s.Health.Level)
 	}
 }
+
+// The mempool never changes the health, and a problem with it is logged once.
+func TestMempoolProblemKeepsHealth(t *testing.T) {
+	var logs bytes.Buffer
+	data := &model.NodeData{
+		Blockchain: model.Blockchain{Blocks: 42, Headers: 42, LastBlockTime: time.Now()},
+		Network:    model.Network{Outbound: 10},
+		Mempool:    &model.Mempool{Error: source.MempoolNotAllow},
+	}
+	p := New(&fakeSource{data: data}, time.Second, 50*time.Millisecond, slog.New(slog.NewTextHandler(&logs, nil)))
+	p.Poll(context.Background())
+	p.Poll(context.Background())
+	s := p.Snapshot()
+	if !s.Reachable || s.Health.Level != model.Healthy {
+		t.Fatalf("a mempool problem changed the status: %+v", s.Health)
+	}
+	if n := strings.Count(logs.String(), "mempool unavailable"); n != 1 {
+		t.Fatalf("logged the mempool problem %d times, want once:\n%s", n, logs.String())
+	}
+}

@@ -19,7 +19,10 @@ import (
 // exists (story #39).
 // "live" is healthy, with a new block every 30 seconds, to see the dashboard
 // react to new data (story #41).
-var Scenarios = []string{"healthy", "syncing", "warning", "error", "unreachable", "starting", "stale", "outdated", "live"}
+// "busy" is healthy on a busy network: a full mempool and high fees (#11).
+// "restarted" is healthy right after bitcoind restarted: the mempool is
+// still loading and there are no fee estimates yet (#11).
+var Scenarios = []string{"healthy", "syncing", "warning", "error", "unreachable", "starting", "stale", "outdated", "live", "busy", "restarted"}
 
 // liveBlockEvery is how often a block arrives in the "live" scenario.
 const liveBlockEvery = 30 * time.Second
@@ -80,10 +83,41 @@ func (m *Mock) Fetch(ctx context.Context) (*model.NodeData, error) {
 		Network:  model.Network{Outbound: 10, Inbound: 6},
 		Server:   model.Server{DiskFreeBytes: 812 * gb, DiskTotalBytes: 2 * tb},
 		Software: ParseSoftware(320100, "/Satoshi:32.1.0/"),
+		Mempool: &model.Mempool{
+			Loaded:       true,
+			Transactions: 18_412,
+			VBytes:       42_000_000,
+			UsageBytes:   142_000_000,
+			MaxBytes:     300_000_000,
+			MinFee:       0.1,
+			MinRelayFee:  0.1,
+			Fees:         mockFees(4, 2.4, 1.1),
+		},
 	}
 
 	switch m.scenario {
+	case "busy":
+		d.Mempool = &model.Mempool{
+			Loaded:       true,
+			Transactions: 142_005,
+			VBytes:       298_000_000,
+			UsageBytes:   296_000_000,
+			MaxBytes:     300_000_000,
+			MinFee:       3.2,
+			MinRelayFee:  0.1,
+			Fees:         mockFees(86, 41, 6.5),
+		}
+	case "restarted":
+		d.Mempool.Loaded = false
+		d.Mempool.Transactions = 3_120
+		d.Mempool.VBytes = 7_400_000
+		d.Mempool.UsageBytes = 24_000_000
+		d.Mempool.Fees = mockFees()
 	case "syncing":
+		d.Mempool.Transactions = 1_204
+		d.Mempool.VBytes = 2_100_000
+		d.Mempool.UsageBytes = 9_000_000
+		d.Mempool.Fees = mockFees()
 		d.Blockchain.Blocks = 850_000
 		d.Blockchain.VerificationProgress = 0.87
 		d.Blockchain.InitialBlockDownload = true
@@ -106,6 +140,19 @@ func (m *Mock) Fetch(ctx context.Context) (*model.NodeData, error) {
 		d.Blockchain.LastBlockTime = m.started.Add(time.Duration(n) * liveBlockEvery)
 	}
 	return d, nil
+}
+
+// mockFees returns estimates for FeeTargets with these rates; without
+// rates, the node has not enough data yet.
+func mockFees(rates ...float64) []model.FeeEstimate {
+	fees := make([]model.FeeEstimate, len(FeeTargets))
+	for i, target := range FeeTargets {
+		fees[i] = model.FeeEstimate{Blocks: target, Missing: FeeNoData}
+		if i < len(rates) {
+			fees[i] = model.FeeEstimate{Blocks: target, Rate: &rates[i]}
+		}
+	}
+	return fees
 }
 
 // FetchDetails implements DetailSource with numbers that grow like a real
