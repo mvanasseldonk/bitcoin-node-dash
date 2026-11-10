@@ -37,7 +37,8 @@ jobs:
         run: go build -trimpath -o bin/node-dash ./cmd/node-dash
 
   # install.sh on a real systemd host: install an older release, update,
-  # re-run (no-op), keep a changed unit, node control, uninstall. A fake
+  # re-run (no-op), keep a changed unit, node control, automatic updates,
+  # uninstall. A fake
   # bitcoind service (perl renaming itself) lets the script detect the user and
   # data directory, and the dashboard restart it.
   install-script:
@@ -159,12 +160,90 @@ jobs:
           test ! -e /etc/systemd/system/node-dash.service.d/control.conf
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/api/control)" = 404
 
+      # Automatic updates (story #50), from a fake release server on this
+      # runner: this commit's build as v0.90.0 and v0.91.0, a v0.92.0 that
+      # doesn't start, and a v0.93.0 signed with another key. The test
+      # binaries carry a throwaway release key instead of the real one.
+      - name: Automatic updates
+        run: |
+          set -eu
+          sudo apt-get update -qq && sudo apt-get install -y -qq minisign >/dev/null
+          minisign -G -W -s ci.key -p ci.pub
+          minisign -G -W -s other.key -p other.pub
+          key=$(sed -n 2p ci.pub)
+          build() {
+            go build -ldflags "-X main.version=$1 -X github.com/mvanasseldonk/bitcoin-node-dash/internal/minisign.releaseKey=$key" \
+              -o "$2" ./cmd/node-dash
+          }
+          # publish TAG BINARY [SIGNING KEY]: a release, and make it the latest.
+          publish() {
+            name=node-dash_$1_linux_amd64
+            mkdir -p "srv/download/$1" "pkg/$name" srv/api
+            cp "$2" "pkg/$name/node-dash"
+            tar -czf "srv/download/$1/$name.tar.gz" -C pkg "$name"
+            (cd "srv/download/$1" && sha256sum "$name.tar.gz" > checksums.txt)
+            minisign -S -l -s "${3:-ci.key}" -m "srv/download/$1/checksums.txt" -t "node-dash $1"
+            printf '{"tag_name":"%s"}\n' "$1" > srv/api/latest
+          }
+          status() { sudo cat /var/lib/node-dash/update.json; }
+
+          build v0.90.0 old
+          build v0.91.0 new
+          publish v0.91.0 new
+          python3 -m http.server --directory srv 8999 >/dev/null 2>&1 &
+          sudo install -m 0755 old /usr/local/bin/node-dash
+          sudo systemctl restart node-dash
+          for _ in $(seq 10); do curl -fsS -o /dev/null http://127.0.0.1:8080/healthz && break; sleep 1; done
+          sudo mkdir -p /etc/systemd/system/node-dash-update.service.d
+          printf '%s\n' '[Service]' \
+            'Environment=NODEDASH_UPDATE_API=http://127.0.0.1:8999/api/latest' \
+            'Environment=NODEDASH_UPDATE_DOWNLOADS=http://127.0.0.1:8999/download' |
+            sudo tee /etc/systemd/system/node-dash-update.service.d/ci.conf
+
+          # Turning it on checks right away: v0.90.0 → v0.91.0.
+          NODEDASH_AUTO_UPDATE=1 VERSION=v0.90.0 sh install.sh | tee out.txt
+          grep -q 'Automatic updates are on' out.txt
+          grep -q 'First check: updated' out.txt
+          test "$(node-dash version)" = v0.91.0
+          systemctl is-active node-dash node-dash-update.timer
+          sudo test -x /var/lib/node-dash/node-dash.previous
+          curl -fsS http://127.0.0.1:8080/api/status | grep -q '"autoUpdate":{[^}]*"result":"updated"'
+
+          # A release that doesn't start: the previous binary goes back.
+          printf '#!/bin/sh\n[ "$1" = version ] && echo v0.92.0 && exit 0\nexit 1\n' > broken
+          chmod +x broken
+          publish v0.92.0 broken
+          if sudo systemctl start node-dash-update.service; then echo "a broken release must fail"; exit 1; fi
+          status
+          status | grep -q '"result": "failed"'
+          status | grep -q "v0.92.0 didn't start within 30s; back on v0.91.0"
+          test "$(node-dash version)" = v0.91.0
+          systemctl is-active node-dash
+          curl -fsS http://127.0.0.1:8080/healthz
+
+          # Signed with another key: refused, nothing changes.
+          build v0.93.0 newer
+          publish v0.93.0 newer other.key
+          if sudo systemctl start node-dash-update.service; then echo "a wrongly signed release must be refused"; exit 1; fi
+          status | grep -q '"result": "refused"'
+          test "$(node-dash version)" = v0.91.0
+
+          # Off again.
+          NODEDASH_AUTO_UPDATE=0 VERSION=v0.91.0 sh install.sh | tee out.txt
+          grep -q 'Turning automatic updates off' out.txt
+          test ! -e /etc/systemd/system/node-dash-update.timer
+          test ! -e /etc/systemd/system/node-dash-update.service
+          test ! -e /var/lib/node-dash
+          if curl -fsS http://127.0.0.1:8080/api/status | grep -q autoUpdate; then echo "the row must be gone"; exit 1; fi
+          sudo rm -r /etc/systemd/system/node-dash-update.service.d
+
       - name: Uninstall
         run: |
           NODEDASH_CONTROL=1 sh install.sh >/dev/null
           sh install.sh --uninstall
           test ! -e /usr/local/bin/node-dash
           test ! -e /etc/systemd/system/node-dash.service
+          test ! -e /etc/systemd/system/node-dash-update.timer
           sudo test ! -e /etc/polkit-1/rules.d/50-node-dash.rules
           test ! -e /etc/systemd/system/node-dash.service.d
           if systemctl is-active --quiet node-dash; then echo "service still running"; exit 1; fi

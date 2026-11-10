@@ -33,6 +33,16 @@ export function clockTime(t: string | number): string {
   return new Date(t).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
 }
 
+/** "today 03:12", "yesterday 03:12" or "8 Nov 03:12": when something ran. */
+export function dayTime(t: string, now: number): string {
+  const d = new Date(t)
+  const day = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime()
+  const days = Math.round((day(new Date(now)) - day(d)) / 86_400_000)
+  const date =
+    days === 0 ? 'today' : days === 1 ? 'yesterday' : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+  return `${date} ${clockTime(t)}`
+}
+
 /** "12 days 4 h", "3 h 12 min", "5 min", "40 s": for uptimes. */
 export function longDuration(sec: number): string {
   const s = Math.max(0, Math.floor(sec))

@@ -127,6 +127,29 @@ type Dashboard struct {
 	URL string `json:"url,omitempty"`
 	// Docker is true in the Docker image, which is updated another way.
 	Docker bool `json:"docker"`
+	// AutoUpdate is the last run of the automatic updates (story #50); nil
+	// when they are off.
+	AutoUpdate *AutoUpdate `json:"autoUpdate,omitempty"`
+}
+
+// Results of an automatic update.
+const (
+	UpdateUpdated = "updated" // a newer release was installed
+	UpdateCurrent = "current" // already the latest release
+	UpdateSkipped = "skipped" // a new major version, or a local build: needs the install command
+	UpdateRefused = "refused" // the signature or checksum didn't check out: nothing was installed
+	UpdateFailed  = "failed"  // couldn't look up or download, or the new version didn't start
+)
+
+// AutoUpdate is what the updater (node-dash update, run by root once a day)
+// writes to its status file, and the dashboard shows.
+type AutoUpdate struct {
+	LastRun time.Time `json:"lastRun"`
+	Result  string    `json:"result"`
+	// From is the version that ran; To the release it was about.
+	From    string `json:"from,omitempty"`
+	To      string `json:"to,omitempty"`
+	Message string `json:"message,omitempty"`
 }
 
 // Details are the extra numbers for the details page (story #14). They are

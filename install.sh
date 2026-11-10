@@ -10,6 +10,8 @@
 #   NODEDASH_CONTROL=1    let the dashboard stop, start and restart bitcoind (polkit rule);
 #                         NODEDASH_CONTROL=0 turns it off again (read the README first)
 #   BITCOIN_SERVICE=name  the systemd service of Bitcoin Core (default: bitcoind.service)
+#   NODEDASH_AUTO_UPDATE=1  install new releases automatically, once a day (needs v0.7.0 or newer);
+#                           NODEDASH_AUTO_UPDATE=0 turns it off again
 #
 # Uninstall (never touches your Bitcoin data):
 #   curl -fsSL https://raw.githubusercontent.com/mvanasseldonk/bitcoin-node-dash/main/install.sh | sh -s -- --uninstall
@@ -25,6 +27,12 @@ UNIT_HASH="$STATE_DIR/unit.sha256"
 POLKIT_RULE="/etc/polkit-1/rules.d/50-node-dash.rules"
 CONTROL_DROPIN="/etc/systemd/system/node-dash.service.d/control.conf"
 BTC_SERVICE=${BITCOIN_SERVICE:-bitcoind.service}
+# Automatic updates: a root-owned timer runs "node-dash update" once a day.
+UPDATE_SERVICE="/etc/systemd/system/node-dash-update.service"
+UPDATE_TIMER="/etc/systemd/system/node-dash-update.timer"
+UPDATE_STATE="/var/lib/node-dash"
+# The key that signs releases (minisign.pub in the repository).
+PUBKEY="RWT/RF9GWqUdJBDwNWdvqdV0U+5eFTghUZVmWognxJTlffqeKREbSObV"
 
 say() { printf '%s\n' "› $*"; }
 fail() {
@@ -62,10 +70,11 @@ fi
 
 if [ "$ACTION" = uninstall ]; then
 	say "Stopping and removing the node-dash service (your Bitcoin data is not touched)"
+	$SUDO systemctl disable --now node-dash-update.timer >/dev/null 2>&1 || true
 	$SUDO systemctl disable --now node-dash >/dev/null 2>&1 || true
-	$SUDO rm -f "$UNIT" "$BIN" "$POLKIT_RULE" "$CONTROL_DROPIN"
+	$SUDO rm -f "$UNIT" "$BIN" "$POLKIT_RULE" "$CONTROL_DROPIN" "$UPDATE_SERVICE" "$UPDATE_TIMER"
 	$SUDO rmdir "${CONTROL_DROPIN%/*}" 2>/dev/null || true
-	$SUDO rm -rf "$STATE_DIR"
+	$SUDO rm -rf "$STATE_DIR" "$UPDATE_STATE"
 	$SUDO systemctl daemon-reload
 	if [ -e /etc/node-dash.env ]; then
 		say "Left /etc/node-dash.env in place; remove it yourself if you no longer need it"
@@ -176,6 +185,118 @@ check_control() {
 	fail "polkit doesn't allow node-dash to control $BTC_SERVICE; check $POLKIT_RULE and: journalctl -u polkit -n 20"
 }
 
+# --- Automatic updates -----------------------------------------------------------
+
+# needs_updater fails when NODEDASH_AUTO_UPDATE=1 and binary $1 can't update
+# itself: releases before v0.7.0.
+needs_updater() {
+	[ "${NODEDASH_AUTO_UPDATE:-}" = 1 ] || return 0
+	"$1" update -h >/dev/null 2>&1 ||
+		fail "automatic updates need node-dash v0.7.0 or newer; run this without VERSION= to install the latest release"
+}
+
+# configure_auto_update writes or removes the timer and service that update
+# node-dash, per NODEDASH_AUTO_UPDATE. It sets AUTO_CHANGED=yes when systemd
+# must reload. Without NODEDASH_AUTO_UPDATE it leaves things as they are.
+AUTO_CHANGED=no
+configure_auto_update() {
+	case "${NODEDASH_AUTO_UPDATE:-}" in
+	"") return 0 ;;
+	0)
+		if [ -e "$UPDATE_TIMER" ] || [ -e "$UPDATE_SERVICE" ]; then
+			say "Turning automatic updates off"
+			$SUDO systemctl disable --now node-dash-update.timer >/dev/null 2>&1 || true
+			$SUDO rm -f "$UPDATE_TIMER" "$UPDATE_SERVICE"
+			$SUDO rm -rf "$UPDATE_STATE"
+			AUTO_CHANGED=yes
+		fi
+		return 0
+		;;
+	1) ;;
+	*) fail "NODEDASH_AUTO_UPDATE must be 1 (on) or 0 (off), got '$NODEDASH_AUTO_UPDATE'" ;;
+	esac
+
+	cat >"$TMP/node-dash-update.service" <<'SERVICE'
+# Written by the bitcoin-node-dash installer (NODEDASH_AUTO_UPDATE=1).
+# Installs the latest node-dash release of the same major version. It checks
+# the release's signature, keeps the previous binary, and puts it back when the
+# new version doesn't start. Root, because it replaces /usr/local/bin/node-dash.
+[Unit]
+Description=Update node-dash to the latest release
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/node-dash update
+StateDirectory=node-dash
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/usr/local/bin
+ProtectHome=true
+NoNewPrivileges=true
+SERVICE
+	cat >"$TMP/node-dash-update.timer" <<'TIMER'
+# Written by the bitcoin-node-dash installer (NODEDASH_AUTO_UPDATE=1).
+# Once a day, at a random time that stays the same on this server.
+[Unit]
+Description=Check daily for a new node-dash release
+
+[Timer]
+OnCalendar=daily
+RandomizedDelaySec=1d
+FixedRandomDelay=true
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+TIMER
+	for pair in "node-dash-update.service:$UPDATE_SERVICE" "node-dash-update.timer:$UPDATE_TIMER"; do
+		src=$TMP/${pair%%:*}
+		dst=${pair#*:}
+		if ! cmp -s "$src" "$dst" 2>/dev/null; then
+			$SUDO install -m 0644 "$src" "$dst"
+			AUTO_CHANGED=yes
+		fi
+	done
+}
+
+# start_auto_update turns the timer on and checks for an update right away,
+# so the dashboard shows the result.
+start_auto_update() {
+	[ "${NODEDASH_AUTO_UPDATE:-}" = 1 ] || return 0
+	$SUDO systemctl enable --now node-dash-update.timer >/dev/null 2>&1
+	say "Automatic updates are on: once a day, at a random time. Checking now…"
+	if $SUDO systemctl start node-dash-update.service; then
+		result=$(sed -n 's/^ *"result": *"\([a-z]*\)".*/\1/p' "$UPDATE_STATE/update.json" 2>/dev/null)
+		say "First check: ${result:-done}. Logs: journalctl -u node-dash-update"
+	else
+		say "The first check failed; see: journalctl -u node-dash-update -n 20 --no-pager"
+	fi
+}
+
+# verify_signature checks checksums.txt against its minisign signature: with
+# the installed node-dash when it can, else with minisign when installed.
+verify_signature() {
+	if ! curl -fsSL -o "$TMP/checksums.txt.minisig" "$BASE/checksums.txt.minisig" 2>/dev/null; then
+		say "Note: $VERSION isn't signed (releases before v0.7.0 aren't); checked against checksums.txt only"
+		return 0
+	fi
+	if [ -x "$BIN" ] && "$BIN" verify -h >/dev/null 2>&1; then
+		"$BIN" verify "$TMP/checksums.txt" "$TMP/checksums.txt.minisig" "$VERSION" >/dev/null ||
+			fail "the signature of $VERSION doesn't check out; nothing was changed"
+		say "Signature checked with the installed node-dash"
+	elif command -v minisign >/dev/null 2>&1; then
+		out=$(minisign -V -P "$PUBKEY" -m "$TMP/checksums.txt" -x "$TMP/checksums.txt.minisig" 2>&1) &&
+			printf '%s\n' "$out" | grep -qx "Trusted comment: node-dash $VERSION" ||
+			fail "the signature of $VERSION doesn't check out; nothing was changed"
+		say "Signature checked with minisign"
+	else
+		say "Note: checked against checksums.txt only. Install minisign to check the signature too;"
+		say "once installed, node-dash checks the signature of every update itself."
+	fi
+}
+
 # wait_healthy waits until the dashboard answers, and sets PORT.
 wait_healthy() {
 	listen=$(systemctl show -p Environment --value node-dash | tr ' ' '\n' | sed -n 's/^NODEDASH_LISTEN=//p' | head -n 1)
@@ -214,15 +335,20 @@ TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT INT TERM
 
 if [ "$CURRENT" = "$VERSION" ] && [ -e "$UNIT" ]; then
+	needs_updater "$BIN"
 	configure_control
-	if [ "$CONTROL_CHANGED" = no ]; then
+	configure_auto_update
+	if [ "$CONTROL_CHANGED" = no ] && [ "$AUTO_CHANGED" = no ]; then
 		say "node-dash $VERSION is already installed and up to date; nothing to do"
 		exit 0
 	fi
 	$SUDO systemctl daemon-reload
-	$SUDO systemctl restart node-dash
-	wait_healthy
-	check_control
+	if [ "$CONTROL_CHANGED" = yes ]; then
+		$SUDO systemctl restart node-dash
+		wait_healthy
+		check_control
+	fi
+	[ "$AUTO_CHANGED" = no ] || start_auto_update
 	say "node-dash $VERSION is running"
 	exit 0
 fi
@@ -238,8 +364,10 @@ curl -fsSL -o "$TMP/checksums.txt" "$BASE/checksums.txt" || fail "download faile
 	cd "$TMP"
 	grep " $NAME.tar.gz\$" checksums.txt | sha256sum -c - >/dev/null 2>&1
 ) || fail "checksum mismatch for $NAME.tar.gz; nothing was changed"
+verify_signature
 tar -xzf "$TMP/$NAME.tar.gz" -C "$TMP"
 [ -x "$TMP/$NAME/node-dash" ] || fail "the archive doesn't contain node-dash; nothing was changed"
+needs_updater "$TMP/$NAME/node-dash"
 
 # --- Service settings ----------------------------------------------------------
 
@@ -343,7 +471,8 @@ else
 fi
 $SUDO systemctl daemon-reload
 configure_control
-[ "$CONTROL_CHANGED" = no ] || $SUDO systemctl daemon-reload
+configure_auto_update
+[ "$CONTROL_CHANGED" = no ] && [ "$AUTO_CHANGED" = no ] || $SUDO systemctl daemon-reload
 $SUDO systemctl enable node-dash >/dev/null 2>&1
 $SUDO systemctl restart node-dash
 
@@ -351,6 +480,7 @@ $SUDO systemctl restart node-dash
 
 wait_healthy
 check_control
+[ "$AUTO_CHANGED" = no ] || start_auto_update
 
 IP=$(hostname -I 2>/dev/null | awk '{ print $1 }')
 say "node-dash $VERSION is running: http://${IP:-<this-server>}:$PORT"

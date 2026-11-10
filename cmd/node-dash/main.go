@@ -19,11 +19,13 @@ import (
 
 	"github.com/mvanasseldonk/bitcoin-node-dash/internal/control"
 	"github.com/mvanasseldonk/bitcoin-node-dash/internal/details"
+	"github.com/mvanasseldonk/bitcoin-node-dash/internal/minisign"
 	"github.com/mvanasseldonk/bitcoin-node-dash/internal/model"
 	"github.com/mvanasseldonk/bitcoin-node-dash/internal/poller"
 	"github.com/mvanasseldonk/bitcoin-node-dash/internal/release"
 	"github.com/mvanasseldonk/bitcoin-node-dash/internal/server"
 	"github.com/mvanasseldonk/bitcoin-node-dash/internal/source"
+	"github.com/mvanasseldonk/bitcoin-node-dash/internal/updater"
 	"github.com/mvanasseldonk/bitcoin-node-dash/web"
 )
 
@@ -41,6 +43,8 @@ Commands:
   (none)       run the dashboard
   healthcheck  exit 0 if the dashboard on NODEDASH_LISTEN responds (for Docker HEALTHCHECK)
   version      print the version
+  verify       check a release: node-dash verify checksums.txt checksums.txt.minisig v1.2.3
+  update       install the latest release, as root (run by node-dash-update.service)
 
 Configuration is read from environment variables; see the README.
 `
@@ -57,6 +61,10 @@ func main() {
 				os.Exit(1)
 			}
 			return
+		case "verify":
+			os.Exit(verify(os.Args[2:]))
+		case "update":
+			os.Exit(selfUpdate(os.Args[2:]))
 		default:
 			fmt.Fprint(os.Stderr, usage)
 			os.Exit(2)
@@ -68,6 +76,53 @@ func main() {
 		log.Error("fatal", "err", err)
 		os.Exit(1)
 	}
+}
+
+// verify checks a release's checksums.txt against its signature with the
+// release key in this binary (story #50). install.sh uses it.
+func verify(args []string) int {
+	if len(args) == 1 && (args[0] == "-h" || args[0] == "--help") {
+		fmt.Println("Usage: node-dash verify checksums.txt checksums.txt.minisig v1.2.3")
+		fmt.Println("Checks the signature with the release key " + minisign.ReleaseKey().ID() + ".")
+		return 0
+	}
+	if len(args) != 3 {
+		fmt.Fprintln(os.Stderr, "usage: node-dash verify checksums.txt checksums.txt.minisig v1.2.3")
+		return 2
+	}
+	sums, err := os.ReadFile(args[0])
+	if err == nil {
+		var sig []byte
+		if sig, err = os.ReadFile(args[1]); err == nil {
+			err = minisign.VerifyRelease(minisign.ReleaseKey(), args[2], sums, sig)
+		}
+	}
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "signature check failed:", err)
+		return 1
+	}
+	fmt.Println("signature ok: node-dash", args[2], "signed with key", minisign.ReleaseKey().ID())
+	return 0
+}
+
+// selfUpdate installs the latest release (story #50). It runs as root from
+// node-dash-update.service; see internal/updater.
+func selfUpdate(args []string) int {
+	if len(args) == 1 && (args[0] == "-h" || args[0] == "--help") {
+		fmt.Println("Usage: node-dash update")
+		fmt.Println("Installs the latest release of the same major version, as root. Run by node-dash-update.service.")
+		return 0
+	}
+	if len(args) != 0 {
+		fmt.Fprintln(os.Stderr, "usage: node-dash update")
+		return 2
+	}
+	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	st := updater.Run(context.Background(), updater.Defaults(version, log))
+	if st.Result == model.UpdateRefused || st.Result == model.UpdateFailed {
+		return 1
+	}
+	return 0
 }
 
 // healthcheck asks the locally running dashboard whether it is up.
@@ -131,9 +186,20 @@ func run(log *slog.Logger) error {
 
 	// The Docker image sets NODEDASH_DOCKER=1: it is updated by pulling the image.
 	inDocker := os.Getenv("NODEDASH_DOCKER") == "1"
+	// The status of the automatic updates (story #50), written by the updater.
+	updateStatus := func() *model.AutoUpdate {
+		return updater.ReadStatus(filepath.Join(updater.DefaultStateDir, updater.StatusFile))
+	}
+	if scenario := os.Getenv("NODEDASH_MOCK"); scenario != "" {
+		updateStatus = func() *model.AutoUpdate { return mockAutoUpdate(scenario, dashVersion) }
+	}
 	opts := []server.Option{
 		server.WithName(name),
-		server.WithDashboard(func() model.Dashboard { return release.Dashboard(dashVersion, dashLatest, inDocker) }),
+		server.WithDashboard(func() model.Dashboard {
+			d := release.Dashboard(dashVersion, dashLatest, inDocker)
+			d.AutoUpdate = updateStatus()
+			return d
+		}),
 	}
 	if os.Getenv("NODEDASH_ANCORO") == "0" {
 		opts = append(opts, server.WithoutAncoro())
@@ -207,6 +273,20 @@ func mockDashboard(scenario, version string) (string, release.Latest) {
 		latest = release.Release{Major: own.Major, Minor: own.Minor + 1}
 	}
 	return own.Tag(), release.Fixed(latest)
+}
+
+// mockAutoUpdate pretends automatic updates in mock mode: "healthy" updated
+// last night, "warning" had a release that didn't start. Elsewhere they're off.
+func mockAutoUpdate(scenario, version string) *model.AutoUpdate {
+	last := time.Now().Add(-9 * time.Hour).UTC().Truncate(time.Minute)
+	switch scenario {
+	case "healthy":
+		return &model.AutoUpdate{LastRun: last, Result: model.UpdateUpdated, From: "v0.4.2", To: version}
+	case "warning":
+		return &model.AutoUpdate{LastRun: last, Result: model.UpdateFailed, From: version, To: "v0.6.1",
+			Message: "v0.6.1 didn't start within 30s; back on " + version}
+	}
+	return nil
 }
 
 // newSource returns the mock source when NODEDASH_MOCK is set,

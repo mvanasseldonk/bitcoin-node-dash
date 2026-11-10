@@ -50,6 +50,17 @@ export interface Dashboard {
   url?: string
   /** In the Docker image, which is updated by pulling a new image. */
   docker: boolean
+  /** The last automatic update (story #50); absent when they are off. */
+  autoUpdate?: AutoUpdate
+}
+
+/** Mirrors model.AutoUpdate. */
+export interface AutoUpdate {
+  lastRun: string
+  result: 'updated' | 'current' | 'skipped' | 'refused' | 'failed'
+  from?: string
+  to?: string
+  message?: string
 }
 
 /** A request that hangs longer than this counts as a failure. */

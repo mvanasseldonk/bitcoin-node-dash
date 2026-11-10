@@ -4,7 +4,8 @@
 
 import type { ComponentChildren } from 'preact'
 import { useEffect, useRef, useState } from 'preact/hooks'
-import type { Dashboard } from './api'
+import type { AutoUpdate, Dashboard } from './api'
+import { dayTime } from './format'
 
 const INSTALL = 'curl -fsSL https://raw.githubusercontent.com/mvanasseldonk/bitcoin-node-dash/main/install.sh | sh'
 const DOCKER = 'docker compose pull && docker compose up -d'
@@ -49,6 +50,36 @@ export function DashboardRow({ dash }: { dash: Dashboard }) {
         {hint && <span class={`detail-hint ${dash.available ? 'detail-hint-news' : ''}`}>{hint}</span>}
       </dt>
       <dd>{dash.version}</dd>
+    </div>
+  )
+}
+
+/** What the last automatic update did (story #50), e.g. "updated to v0.6.0". */
+function autoUpdateText(a: AutoUpdate): string {
+  switch (a.result) {
+    case 'updated':
+      return `updated to ${a.to}`
+    case 'current':
+      return 'up to date'
+    case 'refused':
+      return `${a.to} refused: ${a.message}`
+    default:
+      return a.message || a.result
+  }
+}
+
+/** The Automatic updates row: on, and when it last ran with what result. */
+export function AutoUpdateRow({ auto, now }: { auto: AutoUpdate; now: number }) {
+  const problem = auto.result === 'failed' || auto.result === 'refused'
+  return (
+    <div class="detail-row">
+      <dt>
+        Automatic updates
+        <span class={`detail-hint ${problem ? 'detail-hint-problem' : ''}`}>
+          Last run {dayTime(auto.lastRun, now)} {'·'} {autoUpdateText(auto)}
+        </span>
+      </dt>
+      <dd>On</dd>
     </div>
   )
 }

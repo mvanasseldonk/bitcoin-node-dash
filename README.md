@@ -80,7 +80,8 @@ curl -fsSL https://raw.githubusercontent.com/mvanasseldonk/bitcoin-node-dash/mai
 The script:
 
 - finds the user that runs `bitcoind` and its data directory, and shows what it found;
-- downloads the latest release for your CPU (x86-64 or ARM64) and checks it against `checksums.txt`;
+- downloads the latest release for your CPU (x86-64 or ARM64), checks it against `checksums.txt` and checks the
+  signature of `checksums.txt` (see [Signed releases](#signed-releases));
 - installs `/usr/local/bin/node-dash` and a systemd service that starts with your server;
 - prints the dashboard's address, and the command to open the port if the ufw firewall is active.
 
@@ -89,7 +90,8 @@ It uses `sudo` for the install steps. Settings, put before `sh`:
 when the script can't find `bitcoind`.
 
 **Update:** run the same command again. It does nothing when you are up to date. If you changed
-`/etc/systemd/system/node-dash.service` (or installed it by hand), it keeps your version.
+`/etc/systemd/system/node-dash.service` (or installed it by hand), it keeps your version. Or let it update itself:
+see [Automatic updates](#automatic-updates).
 
 **Uninstall** (your Bitcoin data is never touched):
 
@@ -156,6 +158,8 @@ The password is never logged.
 | `BITCOIN_SERVICE`      | `bitcoind.service`         | The systemd service of Bitcoin Core, for node control                               |
 | `NODEDASH_HOSTS`       | _(empty)_                  | Extra host names, comma separated, on which node control may be used (see below)    |
 | `NODEDASH_ANCORO`      | _(empty)_                  | `0` hides the link to Ancoro under the tiles (see [Checking a transaction](#checking-a-transaction)) |
+
+`NODEDASH_AUTO_UPDATE` is a setting of the installer, not of the dashboard: see [Automatic updates](#automatic-updates).
 
 ## Node control
 
@@ -288,6 +292,51 @@ The details page shows the command with a copy button. To know the latest releas
 GitHub once a day (`api.github.com/repos/mvanasseldonk/bitcoin-node-dash/releases/latest`), together with the
 [Bitcoin Core lookup](#upgrade-advice). `NODEDASH_UPDATE_CHECK=0` turns off both. A build of your own (version `dev`)
 never asks.
+
+### Automatic updates
+
+Without Docker, node-dash can install new releases by itself. It's **off by default**. Turn it on with the
+installer (v0.7.0 or newer):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/mvanasseldonk/bitcoin-node-dash/main/install.sh | NODEDASH_AUTO_UPDATE=1 sh
+```
+
+`NODEDASH_AUTO_UPDATE=0` turns it off again; `--uninstall` removes it too. The installer adds a systemd timer,
+`node-dash-update.timer`, that runs `node-dash update` as root once a day, at a random time that stays the same on
+your server. It checks once right away. Each run:
+
+- **Only the same major version:** it installs v0.8.0 over v0.7.0, but not v1.0.0. A new major version needs the
+  install command, so you can read what changed first.
+- **Checks the signature** of the release with the key built into the node-dash that is installed, never the new
+  one, and the archive against `checksums.txt`. An unsigned or wrongly signed release is refused.
+- **Keeps the previous binary** in `/var/lib/node-dash`. When the new version doesn't answer within 30 seconds, it puts
+  the previous one back.
+- **Writes the result** to `/var/lib/node-dash/update.json`. The details page shows it in the **Automatic updates** row:
+  when it last ran, and whether it updated, was up to date, or what went wrong.
+
+It only replaces the binary. When a release changes `node-dash.service`, its release notes say so; run the install
+command for that. Logs: `journalctl -u node-dash-update`. To check right away: `sudo systemctl start node-dash-update`.
+
+**With Docker** it doesn't apply: `docker compose pull && docker compose up -d`, or a tool such as
+[Watchtower](https://containrrr.dev/watchtower/), updates the container.
+
+**The risk:** an update is installed without anyone looking at it first. The signature makes sure it was signed with
+the release key, which only the release workflow can use; it doesn't help when that key or the GitHub account is
+stolen. How and why: [decision 0002](docs/decisions/0002-automatic-updates.md).
+
+### Signed releases
+
+From v0.7.0, `checksums.txt` of each release is signed with [minisign](https://jedisct1.github.io/minisign/), key
+`241DA55A465F44FF` ([`minisign.pub`](minisign.pub)). The installer and the updater check it. To check a download
+yourself:
+
+```bash
+minisign -V -p minisign.pub -m checksums.txt
+sha256sum -c --ignore-missing checksums.txt
+```
+
+The trusted comment names the release, e.g. "node-dash v0.7.0".
 
 ## Status rules
 
