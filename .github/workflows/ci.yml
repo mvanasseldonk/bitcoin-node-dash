@@ -236,6 +236,10 @@ jobs:
           test ! -e /var/lib/node-dash
           if curl -fsS http://127.0.0.1:8080/api/status | grep -q autoUpdate; then echo "the row must be gone"; exit 1; fi
           sudo rm -r /etc/systemd/system/node-dash-update.service.d
+          # This build trusts only the throwaway key, so it would refuse the
+          # real releases the next step installs: those are checked with
+          # minisign and the real key instead.
+          sudo rm /usr/local/bin/node-dash
 
       - name: Uninstall
         run: |
