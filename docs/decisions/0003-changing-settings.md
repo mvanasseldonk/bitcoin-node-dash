@@ -1,6 +1,6 @@
 # 3. How the dashboard changes bitcoin.conf
 
-- **Status:** proposed. To verify on the first node, see [Verification](#verification).
+- **Status:** accepted. Verified on the first node, see [Findings](#findings-on-the-first-node-2026-11-10).
 - **Date:** 2026-11-10
 - **Issue:** #55 (the second half of #13)
 
@@ -86,7 +86,7 @@ StateDirectoryMode=0700
 - **An editor that replaces the file:** `vim` over SSH, for example, writes a new file and renames it. Linux then
   drops the bind mount in the dashboard's namespace, so the new file is read-only for the dashboard. A save then
   fails with "restart node-dash to save again" until the service restarts. It fails closed: it never writes to a
-  stale copy. [Verification](#verification) checks this on the node.
+  stale copy. Confirmed on the node, see [Findings](#findings-on-the-first-node-2026-11-10).
 - **Not supported for now:**
   - **Docker:** the file is mounted read-only. The form says so.
   - **A root-owned file (the contrib unit):** option B, only when someone needs it, with a decision of its own.
@@ -199,3 +199,20 @@ Before #55 is built, check on the node. Nothing here changes `bitcoin.conf`.
    ```
 
 - **If 2 or 3 behave differently,** the in-place approach is reconsidered before building.
+
+### Findings on the first node (2026-11-10)
+
+All four checks came out as expected, so the decision holds.
+
+1. **The file:** `/home/martijn/.bitcoin/bitcoin.conf` is a regular file, not a symlink, owned by `martijn`, the user
+   of both services, so the dashboard can write it.
+   - **Mode `0664`:** the file is readable by every user on the VM, `rpcpassword` included. This is not caused by
+     the dashboard, and an in-place write keeps the mode.
+   - **Advice:** `chmod 600` (or `640`), separately from #55. The backups are always `0600`, whatever the file's
+     mode.
+2. **`ReadWritePaths=` on one file:** with the dashboard's hardening, `bitcoin.conf` was writable and the data
+   directory stayed read-only.
+3. **An editor that replaces the file:** the file was writable before the `mv` and read-only after it. The bind
+   mount is dropped, as expected, so a save after such an edit fails instead of writing to a stale copy.
+4. **`settings.json`:** only `_warning_`, the notice Bitcoin Core writes itself. Nothing overrides the eight
+   settings. #55 reads only the eight keys from it, so `_warning_` is ignored.
