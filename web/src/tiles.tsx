@@ -153,7 +153,7 @@ export function Tiles({ data, now }: { data: NodeData; now: number }) {
     <div class="tiles">
       <SingleTile title="Blockchain" tile={{ ...blockchainTile(data.blockchain, now), extra: softwareLine(data) ?? undefined }} details="blockchain" />
       <NetworkTile network={data.network} />
-      <SingleTile title="Server" tile={serverTile(data.server)} />
+      <SingleTile title="Server" tile={serverTile(data.server)} details="server" />
     </div>
   )
 }

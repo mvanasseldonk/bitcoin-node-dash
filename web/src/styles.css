@@ -581,6 +581,7 @@ body {
 .detail-row dd {
   margin: 0;
   text-align: right;
+  white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
 .detail-hint {

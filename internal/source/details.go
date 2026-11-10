@@ -66,12 +66,12 @@ func (r *RPC) FetchDetails(ctx context.Context) (*model.Details, error) {
 
 	d := &model.Details{
 		FetchedAt: time.UnixMilli(totals.TimeMillis).UTC(),
-		Blockchain: model.BlockchainDetails{
+		Blockchain: &model.BlockchainDetails{
 			UptimeSec:       uptime,
 			SizeOnDiskBytes: bc.SizeOnDisk,
 			Pruned:          bc.Pruned,
 		},
-		Network: model.NetworkDetails{
+		Network: &model.NetworkDetails{
 			Networks:       networkTypes(enabled, perNetwork),
 			TotalSentBytes: totals.TotalBytesSent,
 			TotalRecvBytes: totals.TotalBytesRecv,

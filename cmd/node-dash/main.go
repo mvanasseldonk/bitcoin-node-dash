@@ -114,7 +114,13 @@ func run(log *slog.Logger) error {
 
 	var opts []server.Option
 	if ds, ok := src.(source.DetailSource); ok {
-		opts = append(opts, server.WithDetails(details.New(ds, log)))
+		var sys source.ServerReader
+		if r, ok := src.(source.ServerReader); ok {
+			sys = r // mock mode
+		} else {
+			sys = source.NewSystem(dataDir())
+		}
+		opts = append(opts, server.WithDetails(details.New(ds, sys, log)))
 	}
 	if os.Getenv("NODEDASH_CONTROL") == "1" {
 		unit := envOr("BITCOIN_SERVICE", "bitcoind.service")
@@ -172,12 +178,7 @@ func newSource(log *slog.Logger) (source.Source, error) {
 		return source.NewMock(scenario)
 	}
 
-	dataDir := os.Getenv("BITCOIN_DATADIR")
-	if dataDir == "" {
-		if home, err := os.UserHomeDir(); err == nil {
-			dataDir = filepath.Join(home, ".bitcoin")
-		}
-	}
+	dataDir := dataDir()
 	cfg := source.RPCConfig{
 		URL:        envOr("BITCOIN_RPC_URL", "http://127.0.0.1:8332"),
 		User:       os.Getenv("BITCOIN_RPC_USER"),
@@ -189,6 +190,17 @@ func newSource(log *slog.Logger) (source.Source, error) {
 	rpc := source.NewRPC(cfg)
 	log.Info("using Bitcoin Core RPC", "url", cfg.URL, "auth", rpc.AuthSource(), "datadir", cfg.DataDir)
 	return rpc, nil
+}
+
+// dataDir is the Bitcoin data directory: BITCOIN_DATADIR, or ~/.bitcoin.
+func dataDir() string {
+	if d := os.Getenv("BITCOIN_DATADIR"); d != "" {
+		return d
+	}
+	if home, err := os.UserHomeDir(); err == nil {
+		return filepath.Join(home, ".bitcoin")
+	}
+	return ""
 }
 
 func envOr(key, def string) string {

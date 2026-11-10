@@ -1,10 +1,11 @@
-// Package details serves the extra numbers of the details page (story #14).
-// They are fetched on demand, only while someone has the page open, and
-// shared by all visitors for a few seconds.
+// Package details serves the extra numbers of the details page (stories #14
+// and #36). They are fetched on demand, only while someone has the page
+// open, and shared by all visitors for a few seconds.
 package details
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"sync"
 	"time"
@@ -18,61 +19,76 @@ const CacheTTL = 4 * time.Second
 
 const fetchTimeout = 5 * time.Second
 
-// Service fetches details from a source, caches them briefly, and computes
-// the transfer rates from two readings.
+// Service reads details from the node and the server, caches them briefly,
+// and computes rates and CPU usage from two readings.
 type Service struct {
-	src source.DetailSource
-	log *slog.Logger
-	now func() time.Time
+	node   source.DetailSource
+	server source.ServerReader
+	log    *slog.Logger
+	now    func() time.Time
 
-	mu        sync.Mutex
-	cached    *model.Details
-	cachedErr error
-	cachedAt  time.Time
-	// prev is the previous successful reading, for the rates.
+	mu       sync.Mutex
+	cached   *model.Details
+	cachedAt time.Time
+	// prev is the previous reading, for the rates and CPU usage.
 	prev    *model.Details
 	lastErr string
 }
 
-// New returns a Service for src.
-func New(src source.DetailSource, log *slog.Logger) *Service {
-	return &Service{src: src, log: log, now: time.Now}
+// New returns a Service. server may be nil when the server figures can't be read.
+func New(node source.DetailSource, server source.ServerReader, log *slog.Logger) *Service {
+	return &Service{node: node, server: server, log: log, now: time.Now}
 }
 
 // Get returns the details, at most CacheTTL old. Concurrent callers wait for
-// one fetch instead of each asking the node.
-func (s *Service) Get(ctx context.Context) (*model.Details, error) {
+// one reading instead of each asking the node. When the node can't be
+// reached, the server figures are still there and NodeError says why.
+func (s *Service) Get(ctx context.Context) *model.Details {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.now().Sub(s.cachedAt) < CacheTTL {
-		return s.cached, s.cachedErr
+	if s.cached != nil && s.now().Sub(s.cachedAt) < CacheTTL {
+		return s.cached
 	}
 
-	// A visitor closing the page must not fail the fetch for the others.
+	// A visitor closing the page must not fail the reading for the others.
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), fetchTimeout)
 	defer cancel()
-	d, err := s.src.FetchDetails(ctx)
-	s.cachedAt = s.now()
+	d, err := s.node.FetchDetails(ctx)
 	if err != nil {
 		if err.Error() != s.lastErr {
 			s.log.Warn("can't fetch details", "err", err)
 		}
 		s.lastErr = err.Error()
-		s.cached, s.cachedErr = nil, err
-		return nil, err
+		d = &model.Details{FetchedAt: s.now(), NodeError: nodeError(err)}
+	} else {
+		s.lastErr = ""
 	}
-	s.lastErr = ""
+	if s.server != nil {
+		d.Server = s.server.ReadServer()
+	}
+
 	withRates(d, s.prev)
+	withCPU(d, s.prev)
 	s.prev = d
-	s.cached, s.cachedErr = d, nil
-	return d, nil
+	s.cached, s.cachedAt = d, s.now()
+	return d
+}
+
+// nodeError says in plain language why the node's numbers are missing.
+// Technical details, such as addresses, stay in the log.
+func nodeError(err error) string {
+	var starting *source.StartingError
+	if errors.As(err, &starting) {
+		return "bitcoin node is starting: " + starting.Status
+	}
+	return "can't reach bitcoin node"
 }
 
 // withRates sets the transfer rates of cur from the change since prev.
 // They stay nil without a usable previous reading: the first one, or after
 // bitcoind restarted and its counters started over.
 func withRates(cur, prev *model.Details) {
-	if prev == nil {
+	if prev == nil || cur.Network == nil || prev.Network == nil || cur.Blockchain == nil || prev.Blockchain == nil {
 		return
 	}
 	dt := cur.FetchedAt.Sub(prev.FetchedAt).Seconds()
@@ -84,5 +100,19 @@ func withRates(cur, prev *model.Details) {
 	}
 	send := float64(c.TotalSentBytes-p.TotalSentBytes) / dt
 	recv := float64(c.TotalRecvBytes-p.TotalRecvBytes) / dt
-	cur.Network.SendRate, cur.Network.RecvRate = &send, &recv
+	c.SendRate, c.RecvRate = &send, &recv
+}
+
+// withCPU sets the CPU usage of cur from the change in CPU time since prev.
+func withCPU(cur, prev *model.Details) {
+	if prev == nil {
+		return
+	}
+	c, p := cur.Server.CPU, prev.Server.CPU
+	if c.Total <= p.Total || c.Idle < p.Idle || p.Total == 0 {
+		return
+	}
+	busy := float64((c.Total-p.Total)-(c.Idle-p.Idle)) / float64(c.Total-p.Total) * 100
+	busy = min(max(busy, 0), 100)
+	cur.Server.CPUPercent = &busy
 }

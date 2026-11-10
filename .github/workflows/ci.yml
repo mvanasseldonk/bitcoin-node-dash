@@ -133,6 +133,24 @@ jobs:
           test "$after" != "$before"
           systemctl is-active bitcoind
 
+      # Still this commit's build: the server figures must be readable under
+      # the hardening of node-dash.service, also while bitcoind has no RPC.
+      - name: Server details under the service hardening
+        run: |
+          curl -fsS http://127.0.0.1:8080/api/details >/dev/null
+          sleep 5
+          curl -fsS http://127.0.0.1:8080/api/details | tee details.json; echo
+          python3 - <<'EOF'
+          import json
+          d = json.load(open("details.json"))
+          s = d["server"]
+          assert d["nodeError"], "the fake bitcoind has no RPC"
+          assert s["memTotalBytes"] > 0 and s["uptimeSec"] > 0 and s["diskTotalBytes"] > 0, s
+          assert s["cpuPercent"] is not None, s
+          assert set(s["missing"]) <= {"temperature"}, s["missing"]
+          print("server details ok; missing:", s["missing"])
+          EOF
+
       - name: Node control off again
         run: |
           NODEDASH_CONTROL=0 sh install.sh | tee out.txt
