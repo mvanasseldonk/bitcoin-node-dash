@@ -6,6 +6,8 @@ package settings
 
 import (
 	"bufio"
+	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -14,6 +16,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/mvanasseldonk/bitcoin-node-dash/internal/model"
 )
@@ -58,7 +61,9 @@ var Keys = func() []string {
 	return k
 }()
 
-// Reader reads the settings from bitcoin.conf and bitcoind's command line.
+// Reader reads the settings from bitcoin.conf, settings.json and bitcoind's
+// command line. With editing on (EnableEditing), it also serves the
+// settings form (story #55).
 type Reader struct {
 	// ConfPath is bitcoin.conf, unless bitcoind's command line names another
 	// with -conf.
@@ -67,11 +72,23 @@ type Reader struct {
 	DataDir string
 	// args returns bitcoind's command-line arguments, nil when unknown.
 	args func() []string
+	// started returns when bitcoind started, from /proc; zero when unknown.
+	started func() time.Time
+
+	// edit is nil while editing is off.
+	edit *editor
 }
 
 // New returns a Reader that finds bitcoind's command line in /proc.
 func New(confPath, dataDir string) *Reader {
-	return &Reader{ConfPath: confPath, DataDir: dataDir, args: bitcoindArgs}
+	return &Reader{ConfPath: confPath, DataDir: dataDir, args: bitcoindArgs, started: bitcoindStarted}
+}
+
+// WithArgs replaces bitcoind's command line, for the mock mode.
+func (r *Reader) WithArgs(args []string) *Reader {
+	r.args = func() []string { return args }
+	r.started = func() time.Time { return time.Time{} }
+	return r
 }
 
 // found is a configured value and where it is set.
@@ -82,61 +99,97 @@ type found struct {
 	negated bool
 }
 
+// state is one reading of everything that configures the node.
+type state struct {
+	path    string
+	dataDir string
+	chain   string
+	// raw is bitcoin.conf as read; nil when it couldn't be.
+	raw     []byte
+	readErr error
+	// conf has the values in bitcoin.conf and its included files; cmd those
+	// on bitcoind's command line; file those in settings.json.
+	conf, cmd, file map[string]found
+}
+
+// lookup returns where key is set, in Bitcoin Core's order: the command
+// line, then settings.json, then bitcoin.conf.
+func (st *state) lookup(key string) (found, bool) {
+	for _, m := range []map[string]found{st.cmd, st.file, st.conf} {
+		if f, ok := m[key]; ok {
+			return f, true
+		}
+	}
+	return found{}, false
+}
+
+func (r *Reader) read(running *model.RunningSettings) *state {
+	var args []string
+	if r.args != nil {
+		args = r.args()
+	}
+	cmd := parseArgs(args)
+	st := &state{dataDir: r.DataDir, path: r.ConfPath, chain: "main", cmd: cmd}
+	if d, ok := cmd["datadir"]; ok && d.raw != "" {
+		st.dataDir = d.raw
+	}
+	if c, ok := cmd["conf"]; ok && c.raw != "" {
+		st.path = c.raw
+		if !filepath.IsAbs(st.path) {
+			st.path = filepath.Join(st.dataDir, st.path)
+		}
+	}
+	if running != nil && running.Chain != "" {
+		st.chain = running.Chain
+	} else if c := chainFromArgs(cmd); c != "" {
+		st.chain = c
+	}
+	st.raw, st.readErr = os.ReadFile(st.path)
+	if st.readErr != nil {
+		st.raw = nil
+	}
+	st.conf = readConf(st.raw, st.dataDir, st.chain)
+	st.file = readSettingsFile(st.dataDir, st.chain)
+	return st
+}
+
+// configured is the value of s where it is set, if it is.
+func (st *state) configured(s spec) (v *int64, f found, invalid string) {
+	f, ok := st.lookup(s.key)
+	if !ok {
+		return nil, f, ""
+	}
+	n, valid := parse(s.kind, f)
+	if !valid {
+		invalid = f.raw
+	}
+	return &n, f, invalid
+}
+
+// def is Bitcoin Core's default for s, given the rest of the configuration.
+func (st *state) def(s spec) *int64 {
+	if s.key == "listen" {
+		// -connect implies -listen=0.
+		if c, ok := st.lookup("connect"); ok && !c.negated && c.raw != "0" {
+			return val(0)
+		}
+	}
+	return s.def
+}
+
 // ReadSettings implements source.SettingsReader. running is nil while the
 // node can't be reached.
 func (r *Reader) ReadSettings(running *model.RunningSettings) *model.Settings {
-	args := r.args()
-	cmd := parseArgs(args)
-
-	dataDir := r.DataDir
-	if d, ok := cmd["datadir"]; ok && d.raw != "" {
-		dataDir = d.raw
+	st := r.read(running)
+	out := &model.Settings{Path: st.path}
+	if st.readErr != nil {
+		out.FileError = fileError(st.path, st.readErr)
 	}
-	path := r.ConfPath
-	if c, ok := cmd["conf"]; ok && c.raw != "" {
-		path = c.raw
-		if !filepath.IsAbs(path) {
-			path = filepath.Join(dataDir, path)
-		}
-	}
-	chain := "main"
-	if running != nil && running.Chain != "" {
-		chain = running.Chain
-	} else if c := chainFromArgs(cmd); c != "" {
-		chain = c
-	}
-
-	out := &model.Settings{Path: path}
-	conf, err := readConf(path, dataDir, chain)
-	if err != nil {
-		out.FileError = fileError(path, err)
-	}
-	lookup := func(key string) (found, bool) {
-		if f, ok := cmd[key]; ok {
-			return f, true
-		}
-		f, ok := conf[key]
-		return f, ok
-	}
-
 	for _, s := range specs {
 		item := model.Setting{Key: s.key}
-		def := s.def
-		if s.key == "listen" {
-			// -connect implies -listen=0.
-			if c, ok := lookup("connect"); ok && !c.negated && c.raw != "0" {
-				def = val(0)
-			}
-		}
-		var configured *int64
-		f, ok := lookup(s.key)
-		if ok {
-			v, valid := parse(s.kind, f)
-			configured = &v
-			if !valid {
-				item.Invalid = f.raw
-			}
-		}
+		configured, f, invalid := st.configured(s)
+		item.Invalid = invalid
+		def := st.def(s)
 		var run *int64
 		if running != nil && s.running != nil {
 			run = s.running(running)
@@ -165,7 +218,27 @@ func (r *Reader) ReadSettings(running *model.RunningSettings) *model.Settings {
 		}
 		out.Items = append(out.Items, item)
 	}
+	if r.edit != nil {
+		out.Editable = true
+		if saved := r.edit.saved(r.bitcoindStarted(running)); saved != nil {
+			out.RestartNeeded = saved.RestartNeeded
+		}
+	}
 	return out
+}
+
+// bitcoindStarted is when bitcoind started: from /proc, else from its uptime
+// over RPC. Zero when unknown.
+func (r *Reader) bitcoindStarted(running *model.RunningSettings) time.Time {
+	if r.started != nil {
+		if t := r.started(); !t.IsZero() {
+			return t
+		}
+	}
+	if running != nil {
+		return running.Started
+	}
+	return time.Time{}
 }
 
 // parse reads a configured value the way Bitcoin Core does. valid is false
@@ -256,16 +329,15 @@ func parseByteSize(s string) (int64, bool) {
 	return int64(float64(n) * mult / (1 << 20)), true
 }
 
-// readConf reads bitcoin.conf and its includeconf files for one chain.
-// Within a file the first value of a key wins; a value in the chain's
-// section wins over one at the top; the main file wins over included files.
-func readConf(path, dataDir, chain string) (map[string]found, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return map[string]found{}, err
+// readConf reads bitcoin.conf (raw, nil when unreadable) and its
+// includeconf files for one chain. Within a file the first value of a key
+// wins; a value in the chain's section wins over one at the top; the main
+// file wins over included files.
+func readConf(raw []byte, dataDir, chain string) map[string]found {
+	if raw == nil {
+		return map[string]found{}
 	}
-	defer f.Close()
-	top, section, includes := parseFile(f, chain, model.FromConf, "")
+	top, section, includes := parseFile(bytes.NewReader(raw), chain, model.FromConf, "")
 
 	var incTop, incSection []map[string]found
 	for _, inc := range includes {
@@ -290,7 +362,57 @@ func readConf(path, dataDir, chain string) (map[string]found, error) {
 			}
 		}
 	}
-	return out, nil
+	return out
+}
+
+// chainDirs are the chains' subdirectories of the data directory.
+var chainDirs = map[string]string{"main": "", "test": "testnet3", "testnet4": "testnet4", "signet": "signet", "regtest": "regtest"}
+
+// readSettingsFile reads the settings this package knows from Bitcoin
+// Core's settings.json, in the chain's data directory. Its values win over
+// bitcoin.conf. Everything else in it, such as wallet names, is ignored.
+func readSettingsFile(dataDir, chain string) map[string]found {
+	out := map[string]found{}
+	b, err := os.ReadFile(filepath.Join(dataDir, chainDirs[chain], "settings.json"))
+	if err != nil {
+		return out
+	}
+	var m map[string]json.RawMessage
+	if json.Unmarshal(b, &m) != nil {
+		return out
+	}
+	for key, v := range m {
+		if !known(key) {
+			continue
+		}
+		var list []json.RawMessage
+		if json.Unmarshal(v, &list) == nil {
+			if len(list) == 0 {
+				continue
+			}
+			v = list[0]
+		}
+		var raw string
+		var x any
+		if json.Unmarshal(v, &x) != nil {
+			continue
+		}
+		switch t := x.(type) {
+		case string:
+			raw = t
+		case float64:
+			raw = strconv.FormatInt(int64(t), 10)
+		case bool:
+			raw = "0"
+			if t {
+				raw = "1"
+			}
+		default:
+			continue
+		}
+		out[key] = found{raw: raw, source: model.FromSettingsFile, detail: "settings.json"}
+	}
+	return out
 }
 
 // parseFile reads one config file: "key=value" lines, "#" comments,
@@ -408,30 +530,91 @@ func fileError(path string, err error) string {
 	return fmt.Sprintf("Can't read %s", path)
 }
 
-// bitcoindArgs returns the arguments of the running bitcoind, from /proc.
-// Nil when there is no /proc (macOS), no bitcoind visible (another
-// container), or it can't be read.
-func bitcoindArgs() []string {
+// bitcoindPID returns the process directory of the running bitcoind in
+// /proc; "" when there is no /proc (macOS) or no bitcoind visible (another
+// container).
+func bitcoindPID() string {
 	dirs, err := os.ReadDir("/proc")
 	if err != nil {
-		return nil
+		return ""
 	}
 	for _, d := range dirs {
 		if _, err := strconv.Atoi(d.Name()); err != nil {
 			continue
 		}
 		comm, err := os.ReadFile(filepath.Join("/proc", d.Name(), "comm"))
-		if err != nil || strings.TrimSpace(string(comm)) != "bitcoind" {
-			continue
-		}
-		b, err := os.ReadFile(filepath.Join("/proc", d.Name(), "cmdline"))
-		if err != nil {
-			return nil
-		}
-		parts := strings.Split(strings.TrimRight(string(b), "\x00"), "\x00")
-		if len(parts) > 0 {
-			return parts[1:]
+		if err == nil && strings.TrimSpace(string(comm)) == "bitcoind" {
+			return filepath.Join("/proc", d.Name())
 		}
 	}
+	return ""
+}
+
+// bitcoindArgs returns the arguments of the running bitcoind, from /proc.
+// Nil when it can't be found or read.
+func bitcoindArgs() []string {
+	dir := bitcoindPID()
+	if dir == "" {
+		return nil
+	}
+	b, err := os.ReadFile(filepath.Join(dir, "cmdline"))
+	if err != nil {
+		return nil
+	}
+	parts := strings.Split(strings.TrimRight(string(b), "\x00"), "\x00")
+	if len(parts) > 0 {
+		return parts[1:]
+	}
 	return nil
+}
+
+// clockTicks is the kernel's USER_HZ, the unit of start times in /proc. It
+// is 100 on every Linux architecture node-dash is built for.
+const clockTicks = 100
+
+// bitcoindStarted returns when the running bitcoind started, from
+// /proc/<pid>/stat and the boot time in /proc/stat. Zero when unknown.
+func bitcoindStarted() time.Time {
+	dir := bitcoindPID()
+	if dir == "" {
+		return time.Time{}
+	}
+	stat, err := os.ReadFile(filepath.Join(dir, "stat"))
+	if err != nil {
+		return time.Time{}
+	}
+	sys, err := os.ReadFile("/proc/stat")
+	if err != nil {
+		return time.Time{}
+	}
+	return startTime(stat, sys)
+}
+
+// startTime reads a process's start time from its /proc/<pid>/stat and the
+// boot time in /proc/stat. Zero when they can't be read.
+func startTime(stat, sys []byte) time.Time {
+	// The command name, in parentheses, may contain spaces: count from its end.
+	i := bytes.LastIndexByte(stat, ')')
+	if i < 0 {
+		return time.Time{}
+	}
+	fields := strings.Fields(string(stat[i+1:]))
+	// Field 22 of stat is the start time; fields[0] is field 3.
+	if len(fields) < 20 {
+		return time.Time{}
+	}
+	ticks, err := strconv.ParseInt(fields[19], 10, 64)
+	if err != nil {
+		return time.Time{}
+	}
+	for _, line := range strings.Split(string(sys), "\n") {
+		if v, ok := strings.CutPrefix(line, "btime "); ok {
+			boot, err := strconv.ParseInt(strings.TrimSpace(v), 10, 64)
+			if err != nil {
+				return time.Time{}
+			}
+			return time.Unix(boot, 0).Add(time.Duration(ticks) * time.Second / clockTicks)
+		}
+	}
+	return time.Time{}
 }

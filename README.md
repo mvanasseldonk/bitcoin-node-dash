@@ -88,7 +88,9 @@ The script:
 
 It uses `sudo` for the install steps. Settings, put before `sh`:
 `VERSION=v0.2.0` for a specific release, `NODEDASH_USER=bitcoin` and `BITCOIN_DATADIR=/path/to/.bitcoin`
-when the script can't find `bitcoind`.
+when the script can't find `bitcoind`. Options: [node control](#node-control) (`NODEDASH_CONTROL=1`),
+[changing settings](#changing-settings) (`NODEDASH_SETTINGS=1`) and [automatic updates](#automatic-updates)
+(`NODEDASH_AUTO_UPDATE=1`).
 
 **Update:** run the same command again. It does nothing when you are up to date. If you changed
 `/etc/systemd/system/node-dash.service` (or installed it by hand), it keeps your version. Or let it update itself:
@@ -153,13 +155,14 @@ The password is never logged.
 | `BITCOIN_RPC_COOKIE`   | `$BITCOIN_DATADIR/.cookie` | Cookie file for RPC authentication                                                  |
 | `BITCOIN_RPC_USER`     | _(empty)_                  | RPC user; when set, used instead of `bitcoin.conf` and the cookie file              |
 | `BITCOIN_RPC_PASSWORD` | _(empty)_                  | RPC password for `BITCOIN_RPC_USER`                                                 |
-| `NODEDASH_MOCK`        | _(empty)_                  | Run on mock data: `healthy`, `syncing`, `warning`, `error`, `unreachable`, `starting`, `stale`, `outdated`, `live` (a new block every 30 s), `busy` (a full mempool and high fees) or `restarted` (the mempool is still loading) |
+| `NODEDASH_MOCK`        | _(empty)_                  | Run on mock data: `healthy`, `syncing`, `warning`, `error`, `unreachable`, `starting`, `stale`, `outdated`, `live` (a new block every 30 s), `busy` (a full mempool and high fees) or `restarted` (the mempool is still loading). With `NODEDASH_SETTINGS=1`, the settings form edits a demo `bitcoin.conf` in a temporary directory |
 | `NODEDASH_UPDATE_CHECK` | _(empty)_                 | `0` turns off the daily lookup of the latest Bitcoin Core and node-dash releases (see [Upgrade advice](#upgrade-advice) and [New dashboard versions](#new-dashboard-versions)) |
 | `NODEDASH_CONTROL`     | _(empty)_                  | `1` turns on [node control](#node-control): stop, start and restart Bitcoin Core    |
 | `BITCOIN_SERVICE`      | `bitcoind.service`         | The systemd service of Bitcoin Core, for node control                               |
 | `NODEDASH_HOSTS`       | _(empty)_                  | Extra host names, comma separated, on which node control may be used (see below)    |
 | `NODEDASH_ANCORO`      | _(empty)_                  | `0` hides the link to Ancoro under the tiles (see [Checking a transaction](#checking-a-transaction)) |
 | `NODEDASH_PEER_ADDRESSES` | _(empty)_               | `1` shows the addresses of your peers on the Peers page (see [Peers page](#peers-page)) |
+| `NODEDASH_SETTINGS`    | _(empty)_                  | `1` turns on [changing settings](#changing-settings); set by the installer        |
 
 `NODEDASH_AUTO_UPDATE` is a setting of the installer, not of the dashboard: see [Automatic updates](#automatic-updates).
 
@@ -300,6 +303,8 @@ The **Node settings** section on the details page shows eight common settings of
   - "bitcoin.conf", "bitcoin.conf · [main]" (a network section) or the name of an `includeconf` file;
   - "Command line": a flag of bitcoind itself, e.g. `-prune=550` in `ExecStart=` of `bitcoind.service`, read from
     `/proc`. In Docker, the dashboard can't see the bitcoind process, so this source doesn't show there;
+  - "settings.json": Bitcoin Core's own settings file in the data directory, which wins over `bitcoin.conf`. bitcoind
+    usually only keeps wallet names there; bitcoin-qt also stores settings such as `dbcache` there;
   - "Default": not set anywhere, so Bitcoin Core's default;
   - "Running": the node reports it, but it isn't set where the dashboard can see it.
 - **Restart needed:** for pruning, the transaction index, the mempool size, the upload limit and blocks only, the node
@@ -308,8 +313,62 @@ The **Node settings** section on the details page shows eight common settings of
 - **The file:** the section says which `bitcoin.conf` it read (`BITCOIN_CONF`, or `bitcoin.conf` in the data
   directory; a `-conf=` or `-datadir=` on bitcoind's command line wins). If the file is missing or can't be read, it
   says why, and shows the defaults and what the node reports.
-- **Read-only, and nothing else leaves the server:** only these eight settings are in the API, never `rpcpassword`,
-  `rpcauth` or any other line of the file. Like the other details, they are only read while the page is open.
+- **Nothing else leaves the server:** only these eight settings are in the API, never `rpcpassword`, `rpcauth` or
+  any other line of the file. Like the other details, they are only read while the page is open.
+- **Read-only by default.** To change them from the dashboard, see below.
+
+### Changing settings
+
+**Change settings** in the Node settings section opens a form for the same eight settings. It's **off by default**,
+because the dashboard has no login.
+
+> **Anyone who can open the dashboard can change these settings**, including turning on pruning, which deletes old
+> blocks. Only turn this on when the dashboard is reachable from your own home network, never from the internet.
+
+Turn it on with the installer:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/mvanasseldonk/bitcoin-node-dash/main/install.sh | NODEDASH_SETTINGS=1 sh
+```
+
+`NODEDASH_SETTINGS=0` turns it off again. Without it, there is no form, and the API refuses changes.
+
+What the installer does:
+
+- **A drop-in** in `/etc/systemd/system/node-dash.service.d/settings.conf`:
+  - it sets `NODEDASH_SETTINGS=1`;
+  - it gives the dashboard write access to `bitcoin.conf`, that one file, with `ReadWritePaths=`. Never to the data
+    directory;
+  - it creates `/var/lib/node-dash-settings` for the backups, readable only by the dashboard's user.
+- **It never changes an owner or a mode.** `bitcoin.conf` must already exist and be writable by the user the
+  dashboard runs as; otherwise the installer says why and changes nothing. A `bitcoin.conf` owned by root, like
+  `/etc/bitcoin/bitcoin.conf` of Bitcoin Core's own systemd unit, isn't supported yet.
+
+How a save works:
+
+- **Only these eight settings, only numbers.** Every other line, comment and section stays exactly as it is. A
+  setting is changed where it takes effect, e.g. in `[main]`. New ones go at the top, under `# Set by node-dash`.
+- **A backup first**, in `/var/lib/node-dash-settings/backups`. The last 10 are kept.
+- **Changed meanwhile?** If `bitcoin.conf` changed since you opened the form, e.g. over SSH, nothing is saved: reload
+  and make your change again.
+- **Logged:** every save is in `journalctl -u node-dash`, with only the settings that changed, from what to what.
+- **Restart:** a change applies when bitcoind restarts. "Saved · restart bitcoind to apply" shows until it has. With
+  [node control](#node-control) on, the form offers **Restart now**; otherwise it shows the command.
+- **Edited `bitcoin.conf` over SSH?** An editor such as vim replaces the file, and the dashboard's write access goes
+  with it. The form then asks you to restart node-dash: `sudo systemctl restart node-dash`.
+
+Not every setting can be changed here:
+
+- **Set elsewhere:** a setting from bitcoind's command line, an `includeconf` file or `settings.json` wins over
+  `bitcoin.conf`. The form shows it with a lock and where to change it.
+- **Pruning** deletes old blocks when bitcoind restarts, so the form asks first. Turning it off again isn't possible
+  here: that means downloading the whole blockchain again (`-reindex`). The target size can be changed.
+- **The transaction index** takes hours to build and about 60 GB of disk; the form asks first. A pruned node can't
+  keep one.
+- **Ranges:** the database cache is at least 4 MiB and no more than the server's memory; the mempool at least 5 MB.
+
+Not supported: Bitcoin Core in Docker, where `bitcoin.conf` is mounted read-only. How it works and why:
+[decision 0003](docs/decisions/0003-changing-settings.md).
 
 ## Name and icon
 

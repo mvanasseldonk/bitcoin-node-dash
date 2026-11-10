@@ -12,6 +12,8 @@
 #   BITCOIN_SERVICE=name  the systemd service of Bitcoin Core (default: bitcoind.service)
 #   NODEDASH_AUTO_UPDATE=1  install new releases automatically, once a day (needs v0.7.0 or newer);
 #                           NODEDASH_AUTO_UPDATE=0 turns it off again
+#   NODEDASH_SETTINGS=1   let the dashboard change bitcoin.conf (that one file, with backups);
+#                         NODEDASH_SETTINGS=0 turns it off again (read the README first)
 #
 # Uninstall (never touches your Bitcoin data):
 #   curl -fsSL https://raw.githubusercontent.com/mvanasseldonk/bitcoin-node-dash/main/install.sh | sh -s -- --uninstall
@@ -27,6 +29,10 @@ UNIT_HASH="$STATE_DIR/unit.sha256"
 POLKIT_RULE="/etc/polkit-1/rules.d/50-node-dash.rules"
 CONTROL_DROPIN="/etc/systemd/system/node-dash.service.d/control.conf"
 BTC_SERVICE=${BITCOIN_SERVICE:-bitcoind.service}
+# Changing settings: a drop-in that lets node-dash write bitcoin.conf, and
+# keep backups of it.
+SETTINGS_DROPIN="/etc/systemd/system/node-dash.service.d/settings.conf"
+SETTINGS_STATE="/var/lib/node-dash-settings"
 # Automatic updates: a root-owned timer runs "node-dash update" once a day.
 UPDATE_SERVICE="/etc/systemd/system/node-dash-update.service"
 UPDATE_TIMER="/etc/systemd/system/node-dash-update.timer"
@@ -46,7 +52,7 @@ case "${1:-}" in
 "") ACTION=install ;;
 --uninstall) ACTION=uninstall ;;
 -h | --help)
-	sed -n '2,17p' "$0" 2>/dev/null | sed 's/^# \{0,1\}//' || true
+	sed -n '2,19p' "$0" 2>/dev/null | sed 's/^# \{0,1\}//' || true
 	exit 0
 	;;
 *) fail "unknown option: $1 (use --uninstall, or no option to install or update)" ;;
@@ -72,10 +78,13 @@ if [ "$ACTION" = uninstall ]; then
 	say "Stopping and removing the node-dash service (your Bitcoin data is not touched)"
 	$SUDO systemctl disable --now node-dash-update.timer >/dev/null 2>&1 || true
 	$SUDO systemctl disable --now node-dash >/dev/null 2>&1 || true
-	$SUDO rm -f "$UNIT" "$BIN" "$POLKIT_RULE" "$CONTROL_DROPIN" "$UPDATE_SERVICE" "$UPDATE_TIMER"
+	$SUDO rm -f "$UNIT" "$BIN" "$POLKIT_RULE" "$CONTROL_DROPIN" "$SETTINGS_DROPIN" "$UPDATE_SERVICE" "$UPDATE_TIMER"
 	$SUDO rmdir "${CONTROL_DROPIN%/*}" 2>/dev/null || true
 	$SUDO rm -rf "$STATE_DIR" "$UPDATE_STATE"
 	$SUDO systemctl daemon-reload
+	if [ -d "$SETTINGS_STATE" ]; then
+		say "Kept the backups of bitcoin.conf in $SETTINGS_STATE; remove them yourself if you no longer need them"
+	fi
 	if [ -e /etc/node-dash.env ]; then
 		say "Left /etc/node-dash.env in place; remove it yourself if you no longer need it"
 	fi
@@ -183,6 +192,114 @@ check_control() {
 		sleep 1
 	done
 	fail "polkit doesn't allow node-dash to control $BTC_SERVICE; check $POLKIT_RULE and: journalctl -u polkit -n 20"
+}
+
+# --- Finding bitcoind --------------------------------------------------------------
+
+# arg_value prints the value of -name=value or --name=value among the words of $2.
+arg_value() {
+	printf '%s\n' "$2" | tr ' ' '\n' | sed -n "s/^--\{0,1\}$1=//p" | head -n 1
+}
+
+# detect_bitcoind sets BTC_USER, BTC_DATADIR and BTC_CONF from a running
+# bitcoind, or else from bitcoind.service. Values may stay empty.
+detect_bitcoind() {
+	BTC_USER="" BTC_DATADIR="" BTC_CONF=""
+	line=$(ps -eo uid=,args= | awk '$2 ~ /(^|\/)bitcoind$/ { print; exit }')
+	if [ -n "$line" ]; then
+		uid=$(printf '%s\n' "$line" | awk '{ print $1 }')
+		BTC_USER=$(getent passwd "$uid" | cut -d: -f1)
+		args=$line
+	elif systemctl cat bitcoind.service >/dev/null 2>&1; then
+		BTC_USER=$(systemctl show -p User --value bitcoind.service)
+		[ -n "$BTC_USER" ] || BTC_USER=root
+		args=$(systemctl show -p ExecStart --value bitcoind.service)
+	else
+		return 0
+	fi
+	BTC_DATADIR=$(arg_value datadir "$args")
+	BTC_CONF=$(arg_value conf "$args")
+}
+
+# --- Changing settings -----------------------------------------------------------
+
+# configure_settings writes or removes the drop-in that lets node-dash write
+# bitcoin.conf, per NODEDASH_SETTINGS (decision 0003). It never changes an
+# owner or a mode. It sets SETTINGS_CHANGED=yes when node-dash must restart.
+SETTINGS_CHANGED=no
+configure_settings() {
+	case "${NODEDASH_SETTINGS:-}" in
+	"") return 0 ;;
+	0)
+		if [ -e "$SETTINGS_DROPIN" ]; then
+			say "Turning changing settings off (the backups stay in $SETTINGS_STATE)"
+			$SUDO rm -f "$SETTINGS_DROPIN"
+			$SUDO rmdir "${SETTINGS_DROPIN%/*}" 2>/dev/null || true
+			SETTINGS_CHANGED=yes
+		fi
+		return 0
+		;;
+	1) ;;
+	*) fail "NODEDASH_SETTINGS must be 1 (on) or 0 (off), got '$NODEDASH_SETTINGS'" ;;
+	esac
+
+	user=$(systemctl show -p User --value node-dash)
+	[ -n "$user" ] || user=root
+	env=$(systemctl show -p Environment --value node-dash | tr ' ' '\n')
+	datadir=$(printf '%s\n' "$env" | sed -n 's/^BITCOIN_DATADIR=//p' | head -n 1)
+	conf=$(printf '%s\n' "$env" | sed -n 's/^BITCOIN_CONF=//p' | head -n 1)
+	[ -n "$conf" ] || conf=$datadir/bitcoin.conf
+	# A -conf on bitcoind's command line wins, as in the dashboard.
+	detect_bitcoind
+	if [ -n "$BTC_CONF" ]; then
+		case "$BTC_CONF" in
+		/*) conf=$BTC_CONF ;;
+		*) conf=${BTC_DATADIR:-$datadir}/$BTC_CONF ;;
+		esac
+	fi
+	case "$conf" in
+	/*) ;;
+	*) fail "couldn't determine where bitcoin.conf is; set BITCOIN_CONF in $UNIT" ;;
+	esac
+	$SUDO test -f "$conf" ||
+		fail "changing settings needs $conf, which doesn't exist. Create it (an empty file is fine) and run this again"
+	real=$($SUDO readlink -f "$conf")
+	if ! $SUDO runuser -u "$user" -- test -w "$real"; then
+		owner=$($SUDO stat -c %U "$real")
+		fail "node-dash runs as $user, who can't write $real (owned by $owner). The installer doesn't change owners or modes; see the README"
+	fi
+	say "Changing settings: node-dash (user $user) may write $real; backups go to $SETTINGS_STATE/backups"
+
+	cat >"$TMP/settings.conf" <<DROPIN
+# Written by the bitcoin-node-dash installer (NODEDASH_SETTINGS=1).
+# Lets the dashboard write bitcoin.conf, that one file, and keep backups of it.
+[Service]
+Environment=NODEDASH_SETTINGS=1
+ReadWritePaths=$real
+StateDirectory=node-dash-settings
+StateDirectoryMode=0700
+DROPIN
+	if ! cmp -s "$TMP/settings.conf" "$SETTINGS_DROPIN" 2>/dev/null; then
+		$SUDO mkdir -p "${SETTINGS_DROPIN%/*}"
+		$SUDO install -m 0644 "$TMP/settings.conf" "$SETTINGS_DROPIN"
+		SETTINGS_CHANGED=yes
+	fi
+}
+
+# check_settings asks the running dashboard whether it can write bitcoin.conf.
+check_settings() {
+	[ "${NODEDASH_SETTINGS:-}" = 1 ] || return 0
+	code=$(curl -s -o "$TMP/settings.json" -w '%{http_code}' "http://127.0.0.1:$PORT/api/settings" 2>/dev/null || true)
+	case "$code" in
+	200)
+		if grep -q '"error":' "$TMP/settings.json"; then
+			fail "node-dash can't save bitcoin.conf: $(sed -n 's/.*"error":"\([^"]*\)".*/\1/p' "$TMP/settings.json")"
+		fi
+		say "Changing settings is on: Details → Node settings → Change settings"
+		;;
+	404) say "Note: node-dash $VERSION can't change settings yet; it will once updated" ;;
+	*) fail "changing settings didn't turn on; see: journalctl -u node-dash -n 20 --no-pager" ;;
+	esac
 }
 
 # --- Automatic updates -----------------------------------------------------------
@@ -338,16 +455,18 @@ trap 'rm -rf "$TMP"' EXIT INT TERM
 if [ "$CURRENT" = "$VERSION" ] && [ -e "$UNIT" ]; then
 	needs_updater "$BIN"
 	configure_control
+	configure_settings
 	configure_auto_update
-	if [ "$CONTROL_CHANGED" = no ] && [ "$AUTO_CHANGED" = no ]; then
+	if [ "$CONTROL_CHANGED" = no ] && [ "$SETTINGS_CHANGED" = no ] && [ "$AUTO_CHANGED" = no ]; then
 		say "node-dash $VERSION is already installed and up to date; nothing to do"
 		exit 0
 	fi
 	$SUDO systemctl daemon-reload
-	if [ "$CONTROL_CHANGED" = yes ]; then
+	if [ "$CONTROL_CHANGED" = yes ] || [ "$SETTINGS_CHANGED" = yes ]; then
 		$SUDO systemctl restart node-dash
 		wait_healthy
 		check_control
+		check_settings
 	fi
 	[ "$AUTO_CHANGED" = no ] || start_auto_update
 	say "node-dash $VERSION is running"
@@ -371,31 +490,6 @@ tar -xzf "$TMP/$NAME.tar.gz" -C "$TMP"
 needs_updater "$TMP/$NAME/node-dash"
 
 # --- Service settings ----------------------------------------------------------
-
-# arg_value prints the value of -name=value or --name=value among the words of $2.
-arg_value() {
-	printf '%s\n' "$2" | tr ' ' '\n' | sed -n "s/^--\{0,1\}$1=//p" | head -n 1
-}
-
-# detect_bitcoind sets BTC_USER, BTC_DATADIR and BTC_CONF from a running
-# bitcoind, or else from bitcoind.service. Values may stay empty.
-detect_bitcoind() {
-	BTC_USER="" BTC_DATADIR="" BTC_CONF=""
-	line=$(ps -eo uid=,args= | awk '$2 ~ /(^|\/)bitcoind$/ { print; exit }')
-	if [ -n "$line" ]; then
-		uid=$(printf '%s\n' "$line" | awk '{ print $1 }')
-		BTC_USER=$(getent passwd "$uid" | cut -d: -f1)
-		args=$line
-	elif systemctl cat bitcoind.service >/dev/null 2>&1; then
-		BTC_USER=$(systemctl show -p User --value bitcoind.service)
-		[ -n "$BTC_USER" ] || BTC_USER=root
-		args=$(systemctl show -p ExecStart --value bitcoind.service)
-	else
-		return 0
-	fi
-	BTC_DATADIR=$(arg_value datadir "$args")
-	BTC_CONF=$(arg_value conf "$args")
-}
 
 # unit_setting prints the value of "Key=" or "Environment=KEY=" in the installed unit.
 unit_setting() {
@@ -472,8 +566,9 @@ else
 fi
 $SUDO systemctl daemon-reload
 configure_control
+configure_settings
 configure_auto_update
-if [ "$CONTROL_CHANGED" = yes ] || [ "$AUTO_CHANGED" = yes ]; then
+if [ "$CONTROL_CHANGED" = yes ] || [ "$SETTINGS_CHANGED" = yes ] || [ "$AUTO_CHANGED" = yes ]; then
 	$SUDO systemctl daemon-reload
 fi
 $SUDO systemctl enable node-dash >/dev/null 2>&1
@@ -483,6 +578,7 @@ $SUDO systemctl restart node-dash
 
 wait_healthy
 check_control
+check_settings
 [ "$AUTO_CHANGED" = no ] || start_auto_update
 
 IP=$(hostname -I 2>/dev/null | awk '{ print $1 }')

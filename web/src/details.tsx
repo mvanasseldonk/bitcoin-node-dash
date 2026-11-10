@@ -10,7 +10,7 @@ import { AutoUpdateRow, DashboardRow, UpdateBox } from './update'
 
 const REFRESH_MS = 5_000
 
-export type Section = 'blockchain' | 'network' | 'mempool' | 'server' | 'dashboard'
+export type Section = 'blockchain' | 'network' | 'mempool' | 'settings' | 'server' | 'dashboard'
 
 const CHAINS: Record<string, string> = {
   main: 'Mainnet',
@@ -275,7 +275,7 @@ function MempoolSection({ m }: { m: Mempool | null | undefined }) {
 }
 
 /** Names and one-line explanations of the settings (story #13). */
-const SETTINGS: Record<string, { label: string; hint: string }> = {
+export const SETTINGS: Record<string, { label: string; hint: string }> = {
   dbcache: { label: 'Database cache', hint: 'Memory for the chain state; more speeds up syncing' },
   maxconnections: { label: 'Connections', hint: 'Most peers at once, in and out' },
   maxmempool: { label: 'Mempool size', hint: 'Memory for waiting transactions' },
@@ -289,7 +289,7 @@ const SETTINGS: Record<string, { label: string; hint: string }> = {
 const num = (n: number) => n.toLocaleString('en-US')
 
 /** A setting's value in words: "2,048 MiB", "Off · keeps all blocks", "Unlimited". */
-function settingValue(key: string, v: number | null | undefined): string {
+export function settingValue(key: string, v: number | null | undefined): string {
   if (v == null) return key === 'dbcache' ? 'Default' : '—'
   switch (key) {
     case 'dbcache':
@@ -319,6 +319,8 @@ function settingSource(s: Setting): string {
       return `${s.sourceDetail ?? 'included file'} (included)`
     case 'cmdline':
       return 'Command line'
+    case 'settingsfile':
+      return 'settings.json'
     case 'running':
       return 'Running'
   }
@@ -329,9 +331,17 @@ function settingSource(s: Setting): string {
 function SettingsSection({ s }: { s: Settings | null }) {
   return (
     <section class="tile details-section" id="details-settings" aria-labelledby="h-settings">
-      <h2 class="tile-title" id="h-settings">
-        Node settings
-      </h2>
+      <div class="tile-head">
+        <h2 class="tile-title" id="h-settings">
+          Node settings
+        </h2>
+        {s?.editable && (
+          <a class="tile-link" href="#/settings">
+            Change settings<span aria-hidden="true"> →</span>
+          </a>
+        )}
+      </div>
+      {s?.restartNeeded && <p class="details-section-note tone-warning">Saved · restart bitcoind to apply</p>}
       {s?.fileError && <p class="details-section-note">{s.fileError}. The values below come from the node itself, or are Bitcoin Core’s defaults.</p>}
       <dl class="detail-rows">
         {(s?.items ?? []).map((it) => {
@@ -403,7 +413,7 @@ function ServerRows({ srv }: { srv: Details['server'] | undefined }) {
 }
 
 /** The current route: the dashboard, or the details page at a section. */
-export function useRoute(): { page: 'dashboard' | 'peers' } | { page: 'details'; section: Section | null } {
+export function useRoute(): { page: 'dashboard' | 'peers' | 'settings' } | { page: 'details'; section: Section | null } {
   const read = () => location.hash
   const [hash, setHash] = useState(read())
   useEffect(() => {
@@ -412,7 +422,8 @@ export function useRoute(): { page: 'dashboard' | 'peers' } | { page: 'details';
     return () => window.removeEventListener('hashchange', on)
   }, [])
   if (hash === '#/peers') return { page: 'peers' }
-  const m = hash.match(/^#\/details(?:\/(blockchain|network|mempool|server|dashboard))?$/)
+  if (hash === '#/settings') return { page: 'settings' }
+  const m = hash.match(/^#\/details(?:\/(blockchain|network|mempool|settings|server|dashboard))?$/)
   if (!m) return { page: 'dashboard' }
   return { page: 'details', section: (m[1] as Section | undefined) ?? null }
 }

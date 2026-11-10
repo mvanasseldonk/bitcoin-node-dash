@@ -78,6 +78,13 @@ func (s *Service) Get(ctx context.Context) *model.Details {
 	return d
 }
 
+// Invalidate drops the cached reading, e.g. after the settings form saved.
+func (s *Service) Invalidate() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.cached = nil
+}
+
 // nodeError says in plain language why the node's numbers are missing.
 // Technical details, such as addresses, stay in the log.
 func nodeError(err error) string {

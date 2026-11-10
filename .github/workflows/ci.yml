@@ -53,8 +53,11 @@ jobs:
         run: |
           sudo useradd --create-home bitcoin
           sudo -u bitcoin mkdir -p /home/bitcoin/.bitcoin
+          # A copy of perl named bitcoind: the process is called bitcoind
+          # (/proc/<pid>/comm), like the real one.
+          sudo cp "$(command -v perl)" /usr/local/bin/bitcoind
           printf '%s\n' '[Service]' 'User=bitcoin' 'Restart=always' \
-            'ExecStart=/usr/bin/perl -e "$$0 = q{/usr/local/bin/bitcoind -datadir=/home/bitcoin/.bitcoin}; sleep 3600"' |
+            'ExecStart=/usr/local/bin/bitcoind -e "sleep 3600" -- -datadir=/home/bitcoin/.bitcoin' |
             sudo tee /etc/systemd/system/bitcoind.service
           sudo systemctl daemon-reload
           sudo systemctl start bitcoind
@@ -151,6 +154,78 @@ jobs:
           assert set(s["missing"]) <= {"temperature"}, s["missing"]
           print("server details ok; missing:", s["missing"])
           EOF
+
+      # Changing settings (story #55, decision 0003): the drop-in gives
+      # write access to bitcoin.conf only; a save is backed up, refused
+      # cross-site and on a conflict, and needs a restart of bitcoind.
+      - name: Changing settings
+        run: |
+          set -eu
+          conf=/home/bitcoin/.bitcoin/bitcoin.conf
+          printf '%s\n' '# fake node' 'server=1' 'rpcuser=alice' 'rpcpassword=hunter2' 'dbcache=450' '' '[main]' 'maxmempool=300' |
+            sudo -u bitcoin tee "$conf" >/dev/null
+          sudo chmod 600 "$conf"
+          sudo cp "$conf" before.conf
+
+          NODEDASH_SETTINGS=1 sh install.sh | tee out.txt
+          grep -q 'Changing settings: node-dash (user bitcoin) may write /home/bitcoin/.bitcoin/bitcoin.conf' out.txt
+          grep -qx "ReadWritePaths=$conf" /etc/systemd/system/node-dash.service.d/settings.conf
+          systemctl show -p Environment --value node-dash | grep -q 'NODEDASH_SETTINGS=1'
+
+          # The release predates the form: run this commit's build.
+          sudo install -m 0755 node-dash /usr/local/bin/node-dash
+          sudo systemctl restart node-dash
+          for _ in $(seq 10); do curl -fsS -o /dev/null http://127.0.0.1:8080/healthz && break; sleep 1; done
+          curl -fsS http://127.0.0.1:8080/api/settings | tee form.json; echo
+          if grep -q '"error":' form.json; then echo "the form must be able to save"; exit 1; fi
+          if grep -q hunter2 form.json; then echo "a secret left the server"; exit 1; fi
+          hash=$(python3 -c 'import json; print(json.load(open("form.json"))["hash"])')
+
+          post() {
+            curl -s -o resp.json -w '%{http_code}' -X POST -H 'Content-Type: application/json' "$@" http://127.0.0.1:8080/api/settings
+          }
+          # Refused: another site.
+          test "$(post -H 'Origin: http://evil.example' -d "{\"hash\":\"$hash\",\"changes\":{\"dbcache\":1000}}")" = 403
+          sudo cmp "$conf" before.conf
+
+          # Saved: edited in place, owner and mode kept, the rest byte for byte.
+          test "$(post -H 'Origin: http://127.0.0.1:8080' -d "{\"hash\":\"$hash\",\"changes\":{\"dbcache\":1000,\"maxmempool\":500,\"txindex\":1}}")" = 200
+          sudo cat "$conf"
+          printf '%s\n' '# fake node' 'server=1' 'rpcuser=alice' 'rpcpassword=hunter2' 'dbcache=1000' '' '# Set by node-dash' 'txindex=1' '' '[main]' 'maxmempool=500' > want.conf
+          sudo cmp "$conf" want.conf
+          test "$(sudo stat -c '%U %a' "$conf")" = 'bitcoin 600'
+
+          # The backup: the previous file, only for the dashboard's user.
+          backup=$(sudo find /var/lib/node-dash-settings/backups -name 'bitcoin.conf.*')
+          test "$(printf '%s\n' "$backup" | wc -l)" = 1
+          sudo cmp "$backup" before.conf
+          test "$(sudo stat -c '%U %a' "$backup")" = 'bitcoin 600'
+          test "$(sudo stat -c '%a' /var/lib/node-dash-settings)" = 700
+          journalctl -u node-dash --no-pager | grep 'settings saved: dbcache 450 → 1000, maxmempool 300 → 500, txindex unset → 1'
+          if journalctl -u node-dash --no-pager | grep -q hunter2; then echo "a secret in the log"; exit 1; fi
+
+          # Refused: the file changed since the form read it.
+          test "$(post -d "{\"hash\":\"$hash\",\"changes\":{\"dbcache\":2000}}")" = 409
+          grep -q '"conflict":true' resp.json
+
+          # Restart needed until bitcoind has restarted (node control is on).
+          curl -fsS http://127.0.0.1:8080/api/settings | grep -q '"restartNeeded":true'
+          before=$(systemctl show -p MainPID --value bitcoind)
+          curl -fsS -X POST -H 'Content-Type: application/json' -d '{"action":"restart"}' http://127.0.0.1:8080/api/control >/dev/null
+          for _ in $(seq 20); do
+            after=$(systemctl show -p MainPID --value bitcoind)
+            [ "$after" != "$before" ] && [ "$after" != 0 ] && systemctl is-active --quiet bitcoind && break
+            sleep 1
+          done
+          test "$after" != "$before"
+          curl -fsS http://127.0.0.1:8080/api/settings | tee form.json; echo
+          grep -q '"saved":null' form.json
+
+          # Off again: the drop-in goes, the backups stay.
+          NODEDASH_SETTINGS=0 sh install.sh | tee out.txt
+          grep -q 'Turning changing settings off' out.txt
+          test ! -e /etc/systemd/system/node-dash.service.d/settings.conf
+          sudo test -n "$(sudo ls /var/lib/node-dash-settings/backups)"
 
       - name: Node control off again
         run: |
