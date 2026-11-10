@@ -1,5 +1,5 @@
-import type { NodeData } from './api'
-import { ago, formatBytes, isZeroTime, shortDuration } from './format'
+import type { Mempool, NodeData } from './api'
+import { ago, formatBytes, formatFee, formatVMB, isZeroTime, shortDuration } from './format'
 import { useChangeKey, useCountUp } from './motion'
 
 // Thresholds from stories #2–#4. Colour is only used when something needs attention.
@@ -17,6 +17,8 @@ type Tone = 'neutral' | 'muted' | 'warning' | 'error'
 
 interface Single {
   big: string
+  /** A smaller unit after the big value, e.g. " sat/vB". */
+  unit?: string
   line: string
   tone: Tone
   /** An extra small line under the tile, e.g. the node software. */
@@ -81,6 +83,24 @@ export function serverTile(s: NodeData['server']): Single {
   return { big: free, line: 'free disk space', tone: 'neutral' }
 }
 
+/** The fee targets and their labels (story #11). */
+export const FEE_LABELS: Record<number, string> = { 2: '~20 min', 6: '~1 hour', 144: '~1 day' }
+
+/**
+ * The fee for ~20 minutes, with the size of the mempool. Never a status
+ * colour: a busy network says nothing about the node.
+ */
+export function mempoolTile(m: Mempool | null | undefined): Single {
+  if (!m || m.error) return { big: '—', line: 'Mempool unavailable', tone: 'muted' }
+  const size = `${m.transactions.toLocaleString('en-US')} transactions · ${formatVMB(m.vbytes)}`
+  const extra = { text: m.loaded ? size : 'Loading mempool…', tone: 'muted' as Tone }
+  const fee = m.fees?.find((f) => f.blocks === 2)
+  if (!m.loaded || fee?.rate == null) {
+    return { big: '—', line: fee?.missing ?? 'Not enough data yet', tone: 'muted', extra }
+  }
+  return { big: formatFee(fee.rate), unit: ' sat/vB', line: `Fee for ${FEE_LABELS[2]}`, tone: 'neutral', extra }
+}
+
 /** The tile's title, with a link to its section of the details page. */
 function TileHead({ title, details }: { title: string; details?: string }) {
   return (
@@ -118,7 +138,10 @@ function SingleTile({ title, tile, details }: { title: string; tile: Single; det
   return (
     <section class="tile">
       <TileHead title={title} details={details} />
-      <span class={`tile-big tone-${tile.tone}`}>{tile.big}</span>
+      <span class={`tile-big tone-${tile.tone}`}>
+        {tile.big}
+        {tile.unit && <span class="tile-unit">{tile.unit}</span>}
+      </span>
       {tile.block ? <BlockLine {...tile.block} /> : <span class="tile-line">{tile.line}</span>}
       {tile.extra && <span class={`tile-line small tile-extra tone-${tile.extra.tone}`}>{tile.extra.text}</span>}
     </section>
@@ -177,6 +200,7 @@ export function Tiles({ data, now }: { data: NodeData; now: number }) {
       <SingleTile title="Blockchain" tile={{ ...blockchainTile(data.blockchain, now), extra: softwareLine(data) ?? undefined }} details="blockchain" />
       <NetworkTile network={data.network} />
       <SingleTile title="Server" tile={serverTile(data.server)} details="server" />
+      <SingleTile title="Mempool" tile={mempoolTile(data.mempool)} details="mempool" />
     </div>
   )
 }

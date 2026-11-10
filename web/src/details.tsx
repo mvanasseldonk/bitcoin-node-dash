@@ -3,14 +3,14 @@
 
 import type { ComponentChildren } from 'preact'
 import { useEffect, useState } from 'preact/hooks'
-import { fetchDetails, type Details, type Snapshot } from './api'
-import { ago, formatBytes, formatRate, isZeroTime, longDuration } from './format'
-import { softwareLine } from './tiles'
+import { fetchDetails, type Details, type Mempool, type Snapshot } from './api'
+import { ago, formatBytes, formatFee, formatRate, formatVMB, isZeroTime, longDuration } from './format'
+import { FEE_LABELS, softwareLine } from './tiles'
 import { AutoUpdateRow, DashboardRow, UpdateBox } from './update'
 
 const REFRESH_MS = 5_000
 
-export type Section = 'blockchain' | 'network' | 'server' | 'dashboard'
+export type Section = 'blockchain' | 'network' | 'mempool' | 'server' | 'dashboard'
 
 const CHAINS: Record<string, string> = {
   main: 'Mainnet',
@@ -196,6 +196,8 @@ export function DetailsPage({ snap, now, section }: Props) {
         </dl>
       </section>
 
+      <MempoolSection m={data?.mempool} />
+
       <section class="tile details-section" id="details-server" aria-labelledby="h-server">
         <h2 class="tile-title" id="h-server">
           Server
@@ -208,6 +210,58 @@ export function DetailsPage({ snap, now, section }: Props) {
         {dash?.available && <UpdateBox dash={dash} />}
       </section>
     </div>
+  )
+}
+
+/** The mempool and fee estimates (story #11), from the status snapshot. */
+function MempoolSection({ m }: { m: Mempool | null | undefined }) {
+  const ok = !!m && !m.error
+  const counted = ok && m.loaded
+  const sat = (v: number) => `${formatFee(v)} sat/vB`
+  return (
+    <section class="tile details-section" id="details-mempool" aria-labelledby="h-mempool">
+      <h2 class="tile-title" id="h-mempool">
+        Mempool
+      </h2>
+      <dl class="detail-rows">
+        <Row
+          label="Transactions"
+          hint={!m ? undefined : m.error ? m.error : m.loaded ? 'Waiting for a block' : 'Loading mempool…'}
+        >
+          {counted ? m.transactions.toLocaleString('en-US') : dash}
+        </Row>
+        <Row label="Size" hint="The sum of their virtual sizes">
+          {counted ? formatVMB(m.vbytes) : dash}
+        </Row>
+        <Row label="Memory" hint="Used of the maximum (maxmempool)">
+          {counted && m.maxBytes ? `${formatBytes(m.usageBytes)} of ${formatBytes(m.maxBytes)}` : dash}
+        </Row>
+        <Row label="Minimum mempool fee" hint="Cheaper transactions aren’t kept">
+          {ok ? sat(m.minFee) : dash}
+        </Row>
+        <Row label="Minimum relay fee" hint="Cheaper transactions aren’t passed on">
+          {ok ? sat(m.minRelayFee) : dash}
+        </Row>
+      </dl>
+      <h3 class="detail-subtitle">
+        Fee estimates<span class="detail-subtitle-note"> · economical</span>
+      </h3>
+      <dl class="detail-rows">
+        {[2, 6, 144].map((blocks) => {
+          const f = ok ? m.fees?.find((x) => x.blocks === blocks) : undefined
+          const known = f?.rate != null && m?.loaded
+          return (
+            <Row
+              key={blocks}
+              label={FEE_LABELS[blocks]}
+              hint={known ? `Within ${blocks} blocks` : ok ? (f?.missing ?? 'Not enough data yet') : undefined}
+            >
+              {known ? sat(f.rate as number) : dash}
+            </Row>
+          )
+        })}
+      </dl>
+    </section>
   )
 }
 
@@ -248,7 +302,7 @@ export function useRoute(): { page: 'dashboard' } | { page: 'details'; section: 
     window.addEventListener('hashchange', on)
     return () => window.removeEventListener('hashchange', on)
   }, [])
-  const m = hash.match(/^#\/details(?:\/(blockchain|network|server|dashboard))?$/)
+  const m = hash.match(/^#\/details(?:\/(blockchain|network|mempool|server|dashboard))?$/)
   if (!m) return { page: 'dashboard' }
   return { page: 'details', section: (m[1] as Section | undefined) ?? null }
 }

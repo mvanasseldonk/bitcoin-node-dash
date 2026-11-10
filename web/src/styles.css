@@ -238,10 +238,16 @@ body {
 }
 
 /* Tiles */
+/* Two by two (#11); one column at phone width. */
 .tiles {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
+}
+@media (max-width: 600px) {
+  .tiles {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .tile {
@@ -267,6 +273,13 @@ body {
   letter-spacing: -0.68px;
   line-height: 1.15;
   font-variant-numeric: tabular-nums;
+}
+
+.tile-unit {
+  font-family: var(--font-sans);
+  font-size: 16px;
+  letter-spacing: 0;
+  color: var(--muted);
 }
 
 .tile-line {
@@ -676,6 +689,15 @@ body {
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
+.detail-subtitle {
+  margin: 22px 0 4px;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 500;
+}
+.detail-subtitle-note {
+  font-weight: 400;
+}
 .detail-hint {
   font-size: 13px;
   /* Muted, not lighter: small text needs 4.5:1 in light and dark mode. */
@@ -727,6 +749,9 @@ body {
   }
   .page.intro .tile:nth-child(3) {
     animation-delay: 140ms;
+  }
+  .page.intro .tile:nth-child(4) {
+    animation-delay: 180ms;
   }
   .main {
     animation: fade 160ms ease-out;

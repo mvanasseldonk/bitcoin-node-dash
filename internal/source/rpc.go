@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/mvanasseldonk/bitcoin-node-dash/internal/model"
@@ -45,6 +46,10 @@ type RPC struct {
 	cfg    RPCConfig
 	client *http.Client
 	disk   func(path string) (free, total uint64, err error)
+	now    func() time.Time
+
+	feeMu    sync.Mutex
+	feeCache *feeCache
 }
 
 // NewRPC returns an RPC source. Timeouts are controlled by the caller's context.
@@ -53,6 +58,7 @@ func NewRPC(cfg RPCConfig) *RPC {
 		cfg:    cfg,
 		client: &http.Client{Timeout: 30 * time.Second},
 		disk:   diskUsage,
+		now:    time.Now,
 	}
 }
 
@@ -99,6 +105,7 @@ func (r *RPC) Fetch(ctx context.Context) (*model.NodeData, error) {
 			d.Server = model.Server{DiskFreeBytes: free, DiskTotalBytes: total}
 		}
 	}
+	d.Mempool = r.mempool(ctx, bc.Blocks)
 	return d, nil
 }
 
@@ -119,11 +126,15 @@ type rpcError struct {
 }
 
 func (r *RPC) call(ctx context.Context, method string, out any) error {
+	return r.callParams(ctx, method, []any{}, out)
+}
+
+func (r *RPC) callParams(ctx context.Context, method string, params []any, out any) error {
 	body, err := json.Marshal(map[string]any{
 		"jsonrpc": "1.0",
 		"id":      "node-dash",
 		"method":  method,
-		"params":  []any{},
+		"params":  params,
 	})
 	if err != nil {
 		return err

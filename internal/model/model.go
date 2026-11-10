@@ -23,6 +23,8 @@ type NodeData struct {
 	Network    Network    `json:"network"`
 	Server     Server     `json:"server"`
 	Software   Software   `json:"software"`
+	// Mempool is nil when the source doesn't read it.
+	Mempool *Mempool `json:"mempool"`
 	// Upgrade is the advice about the node software, or nil when there is
 	// none to give (not Bitcoin Core, or the latest release is unknown).
 	Upgrade *Upgrade `json:"upgrade"`
@@ -72,6 +74,37 @@ type Blockchain struct {
 type Network struct {
 	Outbound int `json:"outbound"`
 	Inbound  int `json:"inbound"`
+}
+
+// Mempool is the node's mempool and its fee estimates (story #11). It never
+// changes the health: a busy network says nothing about the node.
+type Mempool struct {
+	// Error says in plain language why the mempool is unknown; the other
+	// fields are then zero. The node stays reachable.
+	Error string `json:"error,omitempty"`
+	// Loaded is false while Bitcoin Core loads mempool.dat after a start:
+	// the numbers are too low until then.
+	Loaded       bool  `json:"loaded"`
+	Transactions int64 `json:"transactions"`
+	// VBytes is the sum of the transactions' virtual sizes.
+	VBytes uint64 `json:"vbytes"`
+	// UsageBytes is the memory in use, of at most MaxBytes (maxmempool).
+	UsageBytes uint64 `json:"usageBytes"`
+	MaxBytes   uint64 `json:"maxBytes"`
+	// MinFee and MinRelayFee are in sat/vB, rounded like Fees.
+	MinFee      float64 `json:"minFee"`
+	MinRelayFee float64 `json:"minRelayFee"`
+	// Fees are the estimates for 2, 6 and 144 blocks (economical).
+	Fees []FeeEstimate `json:"fees"`
+}
+
+// FeeEstimate is the fee rate to be confirmed within Blocks blocks.
+type FeeEstimate struct {
+	Blocks int `json:"blocks"`
+	// Rate is in sat/vB: one decimal under 10, whole numbers above. Nil
+	// when unknown; Missing then says why.
+	Rate    *float64 `json:"rate"`
+	Missing string   `json:"missing,omitempty"`
 }
 
 // Server describes the resources of the host the node runs on.
