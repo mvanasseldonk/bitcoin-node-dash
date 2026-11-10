@@ -6,6 +6,7 @@ import { ControlSheet, PowerButton, useControl } from './control'
 import { DetailsPage, useRoute } from './details'
 import { Mark, NAME, useBrand, type Tone } from './brand'
 import { useChangeKey } from './motion'
+import { ThemeSwitch } from './theme'
 
 const REFRESH_MS = 10_000
 /** While a node action runs, follow its progress closely. */
@@ -187,6 +188,7 @@ export function App() {
               {fresh ? `Updated ${updated}` : `Last update ${updated}`}
             </span>
           )}
+          <ThemeSwitch />
           {control.enabled && <PowerButton onClick={() => setSheetOpen(true)} />}
         </div>
       </header>
