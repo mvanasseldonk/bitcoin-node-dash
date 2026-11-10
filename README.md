@@ -258,6 +258,12 @@ e.g. "Attention · Node". In a background tab you can see that the node needs at
 - **On your phone:** "Add to Home Screen" gives the dashboard its own icon and name. The icon stays the same: a phone
   doesn't let a web app change it, so the status shows in the app.
 
+## Dark mode
+
+The dashboard follows your device's light or dark setting. To choose yourself, use the theme button at the top
+right: **System**, **Light** or **Dark**. The choice is kept in that browser only, so your phone and laptop each have
+their own.
+
 ## Status rules
 
 The circle shows the most severe of these rules, with the reasons listed underneath:

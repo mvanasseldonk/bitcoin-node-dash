@@ -3,7 +3,21 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#F2F3F5" />
+    <meta name="theme-color" content="#F2F3F5" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0E1014" media="(prefers-color-scheme: dark)" />
+    <script>
+      // Theme (#42): apply a stored Light or Dark choice before the first
+      // paint, so the page never flashes the wrong colours. See src/theme.tsx.
+      try {
+        var theme = localStorage.getItem('nodedash-theme')
+        if (theme === 'light' || theme === 'dark') {
+          document.documentElement.dataset.theme = theme
+          document.querySelectorAll('meta[name="theme-color"]').forEach(function (m) {
+            m.content = theme === 'dark' ? '#0E1014' : '#F2F3F5'
+          })
+        }
+      } catch (e) {}
+    </script>
     <!-- node-dash puts NODEDASH_NAME in these and the title (internal/server/brand.go). -->
     <meta name="application-name" content="Node" />
     <meta name="apple-mobile-web-app-title" content="Node" />

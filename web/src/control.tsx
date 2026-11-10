@@ -323,7 +323,7 @@ function Steps({ progress }: { progress: Progress }) {
           <li key={label} class={`step step-${state}`} aria-current={state === 'current' ? 'step' : undefined}>
             <span class="step-mark" aria-hidden="true">
               {state === 'done' && (
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M5 12.5l4.5 4.5L19 7.5" />
                 </svg>
               )}

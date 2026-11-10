@@ -12,10 +12,69 @@
   --error: #b42318;
   --unreachable: #5b6472;
 
+  /* The big circle's fills. In light mode they are the status colours. */
+  --circle-healthy: #0b6b45;
+  --circle-warning: #a15c07;
+  --circle-error: #b42318;
+  --circle-unreachable: #5b6472;
+
+  --on-ink: #ffffff;
+  --overlay: rgba(16, 19, 24, 0.4);
+  --handle: #d5d8dd;
+  --border: #dadde2;
+
   --font-display: 'Fraunces', Georgia, serif;
   --font-sans: 'Instrument Sans', system-ui, sans-serif;
 
   color-scheme: light;
+}
+
+/* Dark mode (#42), as approved in the design canvas. It follows the device,
+   unless the theme switch set data-theme on <html>. Text and dots get
+   lighter status tints; the circle keeps deep fills for its white label. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --bg: #0e1014;
+    --surface: #171a20;
+    --ink: #e8eaed;
+    --muted: #9aa1ac;
+    --line: #262a32;
+    --faint: #4a505b;
+    --healthy: #3fb27f;
+    --warning: #e8a33d;
+    --error: #f0645a;
+    --unreachable: #9aa1ac;
+    --circle-healthy: #128a5a;
+    --circle-warning: #b86a0a;
+    --circle-error: #d0352a;
+    --circle-unreachable: #5b6472;
+    --on-ink: #0e1014;
+    --overlay: rgba(0, 0, 0, 0.6);
+    --handle: #3a3f48;
+    --border: #333842;
+    color-scheme: dark;
+  }
+}
+:root[data-theme='dark'] {
+  --bg: #0e1014;
+  --surface: #171a20;
+  --ink: #e8eaed;
+  --muted: #9aa1ac;
+  --line: #262a32;
+  --faint: #4a505b;
+  --healthy: #3fb27f;
+  --warning: #e8a33d;
+  --error: #f0645a;
+  --unreachable: #9aa1ac;
+  --circle-healthy: #128a5a;
+  --circle-warning: #b86a0a;
+  --circle-error: #d0352a;
+  --circle-unreachable: #5b6472;
+  --on-ink: #0e1014;
+  --overlay: rgba(0, 0, 0, 0.6);
+  --handle: #3a3f48;
+  --border: #333842;
+  color-scheme: dark;
 }
 
 * {
@@ -132,17 +191,17 @@ body {
     box-shadow 300ms ease;
 }
 .circle-healthy {
-  --tone: var(--healthy);
+  --tone: var(--circle-healthy);
 }
 .circle-warning {
-  --tone: var(--warning);
+  --tone: var(--circle-warning);
 }
 .circle-error {
-  --tone: var(--error);
+  --tone: var(--circle-error);
 }
 .circle-unreachable,
 .circle-starting {
-  --tone: var(--unreachable);
+  --tone: var(--circle-unreachable);
 }
 
 .circle-label {
@@ -151,6 +210,10 @@ body {
   font-weight: 500;
   letter-spacing: -0.56px;
   color: #fff;
+}
+/* The busy circle is ink: dark in light mode, light in dark mode. */
+.circle-busy .circle-label {
+  color: var(--on-ink);
 }
 
 .subline {
@@ -284,9 +347,12 @@ body {
 }
 
 .power {
+  margin-right: -10px;
+}
+.power,
+.theme-btn {
   width: 44px;
   height: 44px;
-  margin-right: -10px;
   display: grid;
   place-items: center;
   border: 0;
@@ -295,11 +361,15 @@ body {
   color: var(--muted);
   cursor: pointer;
 }
-.power:hover {
+.power:hover,
+.theme-btn:hover,
+.theme-btn[aria-expanded='true'] {
   color: var(--ink);
   background: var(--line);
 }
 .power:focus-visible,
+.theme-btn:focus-visible,
+.theme-option:focus-visible,
 .btn:focus-visible,
 .sheet-close:focus-visible {
   outline: 2px solid var(--ink);
@@ -329,7 +399,7 @@ body {
   inset: 0;
   border: 0;
   padding: 0;
-  background: rgba(16, 19, 24, 0.4);
+  background: var(--overlay);
   cursor: default;
 }
 .sheet {
@@ -358,7 +428,7 @@ body {
   width: 36px;
   height: 4px;
   border-radius: 999px;
-  background: #d5d8dd;
+  background: var(--handle);
 }
 .sheet-head {
   display: flex;
@@ -420,10 +490,10 @@ body {
 .btn-primary {
   border: 0;
   background: var(--ink);
-  color: #fff;
+  color: var(--on-ink);
 }
 .btn-secondary {
-  border: 1px solid #dadde2;
+  border: 1px solid var(--border);
   background: var(--surface);
   color: var(--ink);
 }
@@ -497,6 +567,7 @@ body {
 }
 .step-done .step-mark {
   background: var(--ink);
+  color: var(--on-ink);
 }
 .step-current .step-mark {
   border: 2px solid var(--ink);
@@ -509,7 +580,7 @@ body {
   background: var(--ink);
 }
 .step-todo .step-mark {
-  border: 1.5px solid #d5d8dd;
+  border: 1.5px solid var(--handle);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -607,8 +678,8 @@ body {
 }
 .detail-hint {
   font-size: 13px;
-  color: var(--faint);
-  color: color-mix(in srgb, var(--muted) 75%, var(--surface));
+  /* Muted, not lighter: small text needs 4.5:1 in light and dark mode. */
+  color: var(--muted);
 }
 
 /* Motion (#41): a pulse per status change, a blink per fresh reading, a
@@ -694,4 +765,47 @@ body {
   from {
     opacity: 0;
   }
+}
+
+/* Theme switch (#42) */
+.theme {
+  position: relative;
+}
+.theme-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 5;
+  width: 208px;
+  padding: 6px;
+  border-radius: 16px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: 0 12px 32px -12px color-mix(in srgb, #000 35%, transparent);
+  display: flex;
+  flex-direction: column;
+}
+.theme-option {
+  height: 44px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 15px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  text-align: left;
+}
+.theme-option:hover,
+.theme-option[aria-checked='true'] {
+  background: var(--line);
+}
+/* Without node control the theme button is the last one: align it like the power button. */
+.header-end > .theme:last-child {
+  margin-right: -10px;
 }
