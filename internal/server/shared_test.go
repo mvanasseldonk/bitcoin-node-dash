@@ -32,9 +32,15 @@ func TestVisitorsDontReachTheNode(t *testing.T) {
 	srv := httptest.NewServer(New(p, fstest.MapFS{}))
 	defer srv.Close()
 
+	// 200 visitors, at most 50 at a time: more simultaneous connections than
+	// the listen backlog (128 on macOS) get reset by the OS, which says
+	// nothing about the dashboard.
 	var wg sync.WaitGroup
+	slots := make(chan struct{}, 50)
 	for range 200 {
 		wg.Go(func() {
+			slots <- struct{}{}
+			defer func() { <-slots }()
 			resp, err := http.Get(srv.URL + "/api/status")
 			if err != nil {
 				t.Error(err)
