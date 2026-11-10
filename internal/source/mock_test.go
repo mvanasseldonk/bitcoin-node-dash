@@ -77,3 +77,19 @@ func TestMockDetails(t *testing.T) {
 		}
 	}
 }
+
+func TestMockLiveBlocks(t *testing.T) {
+	m, _ := NewMock("live")
+	start := time.Date(2026, 11, 10, 12, 0, 0, 0, time.UTC)
+	m.now = func() time.Time { return start }
+	first, _ := m.Fetch(context.Background())
+
+	m.now = func() time.Time { return start.Add(70 * time.Second) }
+	later, _ := m.Fetch(context.Background())
+	if got := later.Blockchain.Blocks - first.Blockchain.Blocks; got != 2 {
+		t.Fatalf("after 70 s: %d new blocks, want 2", got)
+	}
+	if want := start.Add(60 * time.Second); !later.Blockchain.LastBlockTime.Equal(want) {
+		t.Fatalf("last block at %v, want %v", later.Blockchain.LastBlockTime, want)
+	}
+}

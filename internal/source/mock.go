@@ -16,7 +16,12 @@ import (
 // keeps serving the first snapshot while it grows older.
 // "outdated" runs a Bitcoin Core version that no longer gets security fixes;
 // in mock mode, the latest release is 32.1.
-var Scenarios = []string{"healthy", "syncing", "warning", "error", "unreachable", "starting", "stale", "outdated"}
+// "live" is healthy, with a new block every 30 seconds, to see the dashboard
+// react to new data (story #41).
+var Scenarios = []string{"healthy", "syncing", "warning", "error", "unreachable", "starting", "stale", "outdated", "live"}
+
+// liveBlockEvery is how often a block arrives in the "live" scenario.
+const liveBlockEvery = 30 * time.Second
 
 // ErrMockUnreachable is returned by the mock source in the "unreachable" scenario.
 var ErrMockUnreachable = errors.New("mock: node unreachable")
@@ -92,6 +97,12 @@ func (m *Mock) Fetch(ctx context.Context) (*model.NodeData, error) {
 		d.Network = model.Network{Outbound: 0, Inbound: 0}
 	case "outdated":
 		d.Software = ParseSoftware(280100, "/Satoshi:28.1.0/")
+	case "live":
+		m.startOnce.Do(func() { m.started = now })
+		n := int64(now.Sub(m.started) / liveBlockEvery)
+		d.Blockchain.Blocks += n
+		d.Blockchain.Headers = d.Blockchain.Blocks
+		d.Blockchain.LastBlockTime = m.started.Add(time.Duration(n) * liveBlockEvery)
 	}
 	return d, nil
 }

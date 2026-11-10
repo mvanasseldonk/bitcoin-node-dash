@@ -1,5 +1,6 @@
 import type { NodeData } from './api'
 import { ago, formatBytes, isZeroTime, shortDuration } from './format'
+import { useChangeKey, useCountUp } from './motion'
 
 // Thresholds from stories #2–#4. Colour is only used when something needs attention.
 const LAST_BLOCK_WARN_MS = 60 * 60 * 1000
@@ -20,6 +21,8 @@ interface Single {
   tone: Tone
   /** An extra small line under the tile, e.g. the node software. */
   extra?: { text: string; tone: Tone }
+  /** The line is about the latest block: it moves when a new one arrives (#41). */
+  block?: { height: number; ago: string }
 }
 
 /** "Bitcoin Core 32.1 · 32.2 available", or null without software info. */
@@ -42,13 +45,14 @@ export function blockchainTile(bc: NodeData['blockchain'], now: number): Single 
   }
   const height = bc.blocks.toLocaleString('en-US')
   if (isZeroTime(bc.lastBlockTime)) {
-    return { big: 'In sync', line: `Block ${height}`, tone: 'neutral' }
+    return { big: 'In sync', line: `Block ${height}`, tone: 'neutral', block: { height: bc.blocks, ago: '' } }
   }
   const age = now - new Date(bc.lastBlockTime).getTime()
   if (age > LAST_BLOCK_WARN_MS) {
     return { big: shortDuration(age), line: 'since the last block', tone: 'warning' }
   }
-  return { big: 'In sync', line: `Block ${height} · ${ago(bc.lastBlockTime, now)}`, tone: 'neutral' }
+  const when = ago(bc.lastBlockTime, now)
+  return { big: 'In sync', line: `Block ${height} · ${when}`, tone: 'neutral', block: { height: bc.blocks, ago: when } }
 }
 
 export function networkTile(n: NodeData['network']) {
@@ -91,12 +95,31 @@ function TileHead({ title, details }: { title: string; details?: string }) {
   )
 }
 
+/** "Block 977,413 · just now": on a new block the height counts up and the time lights up. */
+function BlockLine({ height, ago }: { height: number; ago: string }) {
+  const shown = useCountUp(height)
+  const flash = useChangeKey(height)
+  return (
+    <span class="tile-line">
+      Block <span class="count">{shown.toLocaleString('en-US')}</span>
+      {ago && (
+        <>
+          {' · '}
+          <span key={flash} class={flash ? 'flash' : ''}>
+            {ago}
+          </span>
+        </>
+      )}
+    </span>
+  )
+}
+
 function SingleTile({ title, tile, details }: { title: string; tile: Single; details?: string }) {
   return (
     <section class="tile">
       <TileHead title={title} details={details} />
       <span class={`tile-big tone-${tile.tone}`}>{tile.big}</span>
-      <span class="tile-line">{tile.line}</span>
+      {tile.block ? <BlockLine {...tile.block} /> : <span class="tile-line">{tile.line}</span>}
       {tile.extra && <span class={`tile-line small tile-extra tone-${tile.extra.tone}`}>{tile.extra.text}</span>}
     </section>
   )

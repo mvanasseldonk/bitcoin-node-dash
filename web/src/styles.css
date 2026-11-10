@@ -610,3 +610,88 @@ body {
   color: var(--faint);
   color: color-mix(in srgb, var(--muted) 75%, var(--surface));
 }
+
+/* Motion (#41): a pulse per status change, a blink per fresh reading, a
+   highlight per new block, a fade on first load and between pages. Each
+   plays once, under 1 s, and only moves with transform and opacity, so
+   nothing shifts. With prefers-reduced-motion, nothing moves at all. */
+.circle-wrap {
+  position: relative;
+}
+.pulse {
+  --tone: var(--faint);
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  border: 3px solid var(--tone);
+  opacity: 0;
+  pointer-events: none;
+}
+.count {
+  font-variant-numeric: tabular-nums;
+}
+.flash {
+  border-radius: 4px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .pulse {
+    animation: pulse 1000ms cubic-bezier(0.2, 0.6, 0.3, 1);
+  }
+  .dot.blink {
+    animation: blink 600ms ease-out;
+  }
+  .flash {
+    animation: flash 900ms ease-out;
+  }
+  .page.intro .circle-wrap,
+  .page.intro .tile {
+    animation: rise 240ms ease-out both;
+  }
+  .page.intro .tile:nth-child(1) {
+    animation-delay: 60ms;
+  }
+  .page.intro .tile:nth-child(2) {
+    animation-delay: 100ms;
+  }
+  .page.intro .tile:nth-child(3) {
+    animation-delay: 140ms;
+  }
+  .main {
+    animation: fade 160ms ease-out;
+  }
+}
+
+@keyframes pulse {
+  from {
+    opacity: 0.55;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.35);
+  }
+}
+@keyframes blink {
+  40% {
+    transform: scale(2);
+  }
+}
+@keyframes flash {
+  from {
+    color: var(--healthy);
+    background: color-mix(in srgb, var(--healthy) 14%, transparent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--healthy) 14%, transparent);
+  }
+}
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+}

@@ -5,6 +5,7 @@ import { Tiles } from './tiles'
 import { ControlSheet, PowerButton, useControl } from './control'
 import { DetailsPage, useRoute } from './details'
 import { Mark, NAME, useBrand, type Tone } from './brand'
+import { useChangeKey } from './motion'
 
 const REFRESH_MS = 10_000
 /** While a node action runs, follow its progress closely. */
@@ -113,6 +114,16 @@ export function App() {
   const tone: Tone = serverDown ? 'unreachable' : progress ? 'busy' : stopped ? 'stopped' : level
   const label = serverDown ? LABELS.unreachable : progress ? progress.steps[progress.current] : stopped ? 'Stopped' : level === 'loading' ? '' : LABELS[level]
   useBrand(tone, label)
+  // Motion (#41): one pulse per status change, one blink per fresh reading.
+  const pulse = useChangeKey(tone === 'loading' ? null : tone)
+  const blink = useChangeKey(snap?.updatedAt)
+  // The first data fades in; later renders, e.g. back from details, don't.
+  const [intro, setIntro] = useState(true)
+  useEffect(() => {
+    if (!snap) return
+    const t = window.setTimeout(() => setIntro(false), 1000)
+    return () => window.clearTimeout(t)
+  }, [!!snap])
   // Reasons are listed for warnings and errors; unreachable gets a plain subline.
   const reasons = !progress && !stopped && (level === 'warning' || level === 'error') ? (snap?.health.reasons ?? []) : []
 
@@ -153,7 +164,7 @@ export function App() {
   const updated = age === null ? null : `${shortDuration(age)} ago`
 
   return (
-    <div class="page">
+    <div class={`page ${intro ? 'intro' : ''}`}>
       <header class="header">
         {route.page === 'details' ? (
           <a class="back" href="#/">
@@ -172,7 +183,7 @@ export function App() {
         <div class="header-end">
           {updated && (
             <span class="updated">
-              <span class={`dot ${fresh ? 'dot-live' : ''}`} aria-hidden="true" />
+              <span key={blink} class={`dot ${fresh ? 'dot-live' : ''} ${fresh && blink ? 'blink' : ''}`} aria-hidden="true" />
               {fresh ? `Updated ${updated}` : `Last update ${updated}`}
             </span>
           )}
@@ -181,14 +192,17 @@ export function App() {
       </header>
 
       {route.page === 'details' ? (
-        <main class="main">
+        <main class="main" key="details">
           <DetailsPage snap={snap} now={now} section={route.section} />
         </main>
       ) : (
-        <main class="main">
+        <main class="main" key="dashboard">
           <section class={`hero ${stale ? 'hero-stale' : ''}`} aria-live="polite">
-            <div class={`circle circle-${tone}`} role="img" aria-label={label ? `Node status: ${label}` : 'Loading node status'}>
-              <span class="circle-label">{label}</span>
+            <div class="circle-wrap">
+              <div class={`circle circle-${tone}`} role="img" aria-label={label ? `Node status: ${label}` : 'Loading node status'}>
+                <span class="circle-label">{label}</span>
+              </div>
+              {pulse > 0 && <span key={pulse} class={`pulse circle-${tone}`} aria-hidden="true" />}
             </div>
             {reasons.length > 0 ? (
               <ul class="reasons">
