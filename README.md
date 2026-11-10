@@ -159,6 +159,7 @@ The password is never logged.
 | `BITCOIN_SERVICE`      | `bitcoind.service`         | The systemd service of Bitcoin Core, for node control                               |
 | `NODEDASH_HOSTS`       | _(empty)_                  | Extra host names, comma separated, on which node control may be used (see below)    |
 | `NODEDASH_ANCORO`      | _(empty)_                  | `0` hides the link to Ancoro under the tiles (see [Checking a transaction](#checking-a-transaction)) |
+| `NODEDASH_PEER_ADDRESSES` | _(empty)_               | `1` shows the addresses of your peers on the Peers page (see [Peers page](#peers-page)) |
 
 `NODEDASH_AUTO_UPDATE` is a setting of the installer, not of the dashboard: see [Automatic updates](#automatic-updates).
 
@@ -252,6 +253,23 @@ The **Details** link on each tile opens a page with the numbers behind it:
 These extra numbers are only fetched while the page is open, at most once every 4 seconds, however many people look.
 The page never shows addresses: not your node's, and not those of its peers.
 
+## Peers page
+
+**See all** next to the number of peers on the details page opens a list of every connected peer:
+
+- **Per peer:** the network (IPv4, IPv6, Tor, I2P, CJDNS), incoming or outgoing, the connection type ("Full relay",
+  "Blocks only", "Manual", "Feeler", "Address fetch"), the client ("Bitcoin Core 30.0"), the ping, how long it has
+  been connected, the data sent and received, and whether the connection is encrypted (BIP324).
+- **Sorting:** click a column header; click it again to turn the order around. At phone width, choose with
+  **Sort by**. By default, the peers connected longest come first, so the list stays put.
+- **Load:** everything comes from your node's `getpeerinfo`, only while the page is open, at most once every
+  4 seconds, however many people look.
+- **No status colours:** a slow peer shows by sorting on ping. Bitcoin Core doesn't say which peers misbehave.
+
+**Addresses are off by default.** The dashboard has no login, so anyone who can open it would see the IP and Tor
+addresses of your peers; for incoming peers, those are other people's. Set `NODEDASH_PEER_ADDRESSES=1` to show them,
+as a second line under each peer. Without it, they aren't in the API either. Your node's own address is never shown.
+
 ## Mempool and fees
 
 The **Mempool** tile shows the fee for a transaction to be confirmed within about 20 minutes (2 blocks), in sat/vB,
@@ -293,7 +311,7 @@ their own.
 ## Checking a transaction
 
 Under the tiles, a line links to [Ancoro](https://www.ancoro.site), where you can check whether a transaction went
-through. The dashboard itself never shows addresses or transactions.
+through. The dashboard itself never shows transactions, and peer addresses only with `NODEDASH_PEER_ADDRESSES=1`.
 
 - **Nothing is loaded from Ancoro** until you click.
 - **The link doesn't tell Ancoro where your dashboard runs** (`noreferrer`).

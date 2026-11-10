@@ -21,6 +21,7 @@ import (
 	"github.com/mvanasseldonk/bitcoin-node-dash/internal/details"
 	"github.com/mvanasseldonk/bitcoin-node-dash/internal/minisign"
 	"github.com/mvanasseldonk/bitcoin-node-dash/internal/model"
+	"github.com/mvanasseldonk/bitcoin-node-dash/internal/peers"
 	"github.com/mvanasseldonk/bitcoin-node-dash/internal/poller"
 	"github.com/mvanasseldonk/bitcoin-node-dash/internal/release"
 	"github.com/mvanasseldonk/bitcoin-node-dash/internal/server"
@@ -212,6 +213,11 @@ func run(log *slog.Logger) error {
 			sys = source.NewSystem(dataDir())
 		}
 		opts = append(opts, server.WithDetails(details.New(ds, sys, log)))
+	}
+	if ps, ok := src.(source.PeerSource); ok {
+		// Peer addresses only on request: the dashboard has no login (#12).
+		addresses := os.Getenv("NODEDASH_PEER_ADDRESSES") == "1"
+		opts = append(opts, server.WithPeers(peers.New(ps, addresses, log)))
 	}
 	if os.Getenv("NODEDASH_CONTROL") == "1" {
 		unit := envOr("BITCOIN_SERVICE", "bitcoind.service")

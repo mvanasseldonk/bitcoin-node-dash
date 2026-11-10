@@ -20,7 +20,7 @@ const CHAINS: Record<string, string> = {
   regtest: 'Regtest',
 }
 
-const NETWORKS: Record<string, string> = {
+export const NETWORKS: Record<string, string> = {
   ipv4: 'IPv4',
   ipv6: 'IPv6',
   onion: 'Tor',
@@ -165,7 +165,14 @@ export function DetailsPage({ snap, now, section }: Props) {
           Network
         </h2>
         <dl class="detail-rows">
-          <Row label="Peers">{peers ?? dash}</Row>
+          <Row label="Peers">
+            <span class="detail-with-link">
+              {peers ?? dash}
+              <a href="#/peers">
+                See all<span aria-hidden="true"> →</span>
+              </a>
+            </span>
+          </Row>
           <Row label="Outgoing">{net?.outbound ?? dash}</Row>
           <Row label="Incoming">{net?.inbound ?? dash}</Row>
           <Row
@@ -294,7 +301,7 @@ function ServerRows({ srv }: { srv: Details['server'] | undefined }) {
 }
 
 /** The current route: the dashboard, or the details page at a section. */
-export function useRoute(): { page: 'dashboard' } | { page: 'details'; section: Section | null } {
+export function useRoute(): { page: 'dashboard' | 'peers' } | { page: 'details'; section: Section | null } {
   const read = () => location.hash
   const [hash, setHash] = useState(read())
   useEffect(() => {
@@ -302,6 +309,7 @@ export function useRoute(): { page: 'dashboard' } | { page: 'details'; section: 
     window.addEventListener('hashchange', on)
     return () => window.removeEventListener('hashchange', on)
   }, [])
+  if (hash === '#/peers') return { page: 'peers' }
   const m = hash.match(/^#\/details(?:\/(blockchain|network|mempool|server|dashboard))?$/)
   if (!m) return { page: 'dashboard' }
   return { page: 'details', section: (m[1] as Section | undefined) ?? null }

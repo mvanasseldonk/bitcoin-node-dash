@@ -176,6 +176,47 @@ export interface Details {
   } | null
 }
 
+// Peers page (story #12). Mirrors model.Peers.
+
+export interface Peer {
+  id: number
+  /** ipv4, ipv6, onion, i2p, cjdns or not_publicly_routable */
+  network: string
+  inbound: boolean
+  /** "Full relay", "Blocks only", "Manual", "Feeler", "Address fetch"; "" for inbound. */
+  type: string
+  /** "Bitcoin Core 27.0", or the raw user agent. */
+  client: string
+  /** Null until the node measured it. */
+  pingMs: number | null
+  connectedAt: string
+  sentBytes: number
+  recvBytes: number
+  /** The v2 transport (BIP324). */
+  encrypted: boolean
+  /** Only with NODEDASH_PEER_ADDRESSES=1. */
+  address?: string
+}
+
+export interface Peers {
+  fetchedAt: string
+  /** Null while the node can't be reached; nodeError says why. */
+  peers: Peer[] | null
+  nodeError: string
+  /** Whether the server shows addresses (NODEDASH_PEER_ADDRESSES=1). */
+  addresses: boolean
+}
+
+export async function fetchPeers(signal: AbortSignal): Promise<Peers> {
+  const res = await fetch('/api/peers', {
+    signal: AbortSignal.any([signal, AbortSignal.timeout(FETCH_TIMEOUT_MS)]),
+    cache: 'no-store',
+  })
+  const body = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(body.error || `peers ${res.status}`)
+  return body
+}
+
 /** The node's part may be missing (nodeError); the server's is always there. */
 export async function fetchDetails(signal: AbortSignal): Promise<Details> {
   const res = await fetch('/api/details', {

@@ -256,3 +256,38 @@ type NetworkType struct {
 	// Peers is the number of connected peers on this network.
 	Peers int `json:"peers"`
 }
+
+// Peers is the list for the Peers page (story #12). It is only fetched while
+// someone has that page open.
+type Peers struct {
+	// FetchedAt is when the list was read from the node.
+	FetchedAt time.Time `json:"fetchedAt"`
+	// Peers is nil while the node can't be reached; NodeError then says why.
+	Peers     []Peer `json:"peers"`
+	NodeError string `json:"nodeError"`
+	// Addresses is true with NODEDASH_PEER_ADDRESSES=1: only then do peers
+	// carry their address.
+	Addresses bool `json:"addresses"`
+}
+
+// Peer is one connected peer. Never the node's own address.
+type Peer struct {
+	ID int64 `json:"id"`
+	// Network is ipv4, ipv6, onion, i2p, cjdns or not_publicly_routable.
+	Network string `json:"network"`
+	Inbound bool   `json:"inbound"`
+	// Type is the connection type in plain language: "Full relay",
+	// "Blocks only", "Manual", "Feeler", "Address fetch"; "" for inbound.
+	Type string `json:"type"`
+	// Client is e.g. "Bitcoin Core 27.0", or the raw user agent.
+	Client string `json:"client"`
+	// PingMs is nil until the node measured it.
+	PingMs      *float64  `json:"pingMs"`
+	ConnectedAt time.Time `json:"connectedAt"`
+	SentBytes   uint64    `json:"sentBytes"`
+	RecvBytes   uint64    `json:"recvBytes"`
+	// Encrypted is true for the v2 transport (BIP324).
+	Encrypted bool `json:"encrypted"`
+	// Address is only set with NODEDASH_PEER_ADDRESSES=1.
+	Address string `json:"address,omitempty"`
+}

@@ -59,3 +59,19 @@ func TestDetailsOffWithoutSource(t *testing.T) {
 		t.Fatalf("status = %d, want 404", rec.Code)
 	}
 }
+
+type fakePeers struct{ p *model.Peers }
+
+func (f fakePeers) Get(context.Context) *model.Peers { return f.p }
+
+func TestPeersEndpoint(t *testing.T) {
+	h := New(fixedSnapshot{}, fstest.MapFS{}, WithPeers(fakePeers{&model.Peers{Peers: []model.Peer{{ID: 4, Client: "Bitcoin Core 30.0"}}}}))
+	rec := get(h, http.MethodGet, "/api/peers")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	var got model.Peers
+	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil || len(got.Peers) != 1 || got.Peers[0].ID != 4 {
+		t.Fatalf("body = %+v, %v", got, err)
+	}
+}
