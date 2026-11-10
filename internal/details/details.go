@@ -22,10 +22,11 @@ const fetchTimeout = 5 * time.Second
 // Service reads details from the node and the server, caches them briefly,
 // and computes rates and CPU usage from two readings.
 type Service struct {
-	node   source.DetailSource
-	server source.ServerReader
-	log    *slog.Logger
-	now    func() time.Time
+	node     source.DetailSource
+	server   source.ServerReader
+	settings source.SettingsReader
+	log      *slog.Logger
+	now      func() time.Time
 
 	mu       sync.Mutex
 	cached   *model.Details
@@ -35,9 +36,9 @@ type Service struct {
 	lastErr string
 }
 
-// New returns a Service. server may be nil when the server figures can't be read.
-func New(node source.DetailSource, server source.ServerReader, log *slog.Logger) *Service {
-	return &Service{node: node, server: server, log: log, now: time.Now}
+// New returns a Service. server and settings may be nil when they can't be read.
+func New(node source.DetailSource, server source.ServerReader, settings source.SettingsReader, log *slog.Logger) *Service {
+	return &Service{node: node, server: server, settings: settings, log: log, now: time.Now}
 }
 
 // Get returns the details, at most CacheTTL old. Concurrent callers wait for
@@ -65,6 +66,9 @@ func (s *Service) Get(ctx context.Context) *model.Details {
 	}
 	if s.server != nil {
 		d.Server = s.server.ReadServer()
+	}
+	if s.settings != nil {
+		d.Settings = s.settings.ReadSettings(d.Running)
 	}
 
 	withRates(d, s.prev)

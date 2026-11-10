@@ -173,6 +173,7 @@ func (m *Mock) FetchDetails(ctx context.Context) (*model.Details, error) {
 
 	d := &model.Details{
 		FetchedAt: now,
+		Running:   &model.RunningSettings{Chain: "main"},
 		Blockchain: &model.BlockchainDetails{
 			UptimeSec:       int64((12*24+4)*3600 + elapsed),
 			SizeOnDiskBytes: 742 * gb,
@@ -285,4 +286,40 @@ func (m *Mock) FetchPeers(ctx context.Context) ([]model.Peer, error) {
 	}
 	SortPeers(peers)
 	return peers, nil
+}
+
+// ReadSettings implements SettingsReader: a mix of sources. In "warning",
+// bitcoin.conf was changed but bitcoind wasn't restarted (story #13).
+func (m *Mock) ReadSettings(running *model.RunningSettings) *model.Settings {
+	v := func(n int64) *int64 { return &n }
+	s := &model.Settings{
+		Path: "/home/satoshi/.bitcoin/bitcoin.conf",
+		Items: []model.Setting{
+			{Key: "dbcache", Value: v(2048), Source: model.FromConf},
+			{Key: "maxconnections", Value: v(125), Source: model.FromDefault},
+			{Key: "maxmempool", Value: v(300), Source: model.FromDefault},
+			{Key: "prune", Value: v(0), Source: model.FromDefault},
+			{Key: "txindex", Value: v(1), Source: model.FromConf},
+			{Key: "listen", Value: v(1), Source: model.FromDefault},
+			{Key: "blocksonly", Value: v(0), Source: model.FromDefault},
+			{Key: "maxuploadtarget", Value: v(5000), Source: model.FromConf, SourceDetail: "[main]"},
+		},
+	}
+	switch m.scenario {
+	case "warning":
+		s.Items[2] = model.Setting{Key: "maxmempool", Value: v(300), Source: model.FromRunning, ConfValue: v(500)}
+	case "outdated":
+		s.Path = "/etc/bitcoin/bitcoin.conf"
+		s.Items[3] = model.Setting{Key: "prune", Value: v(550), Source: model.FromCmdline, SourceDetail: "-prune=550"}
+		s.Items[4] = model.Setting{Key: "txindex", Value: v(0), Source: model.FromDefault}
+	}
+	if running == nil {
+		// Unreachable: only what bitcoin.conf says; the rest is unknown.
+		for i, it := range s.Items {
+			if it.Source == model.FromRunning {
+				s.Items[i] = model.Setting{Key: it.Key, Value: it.ConfValue, Source: model.FromConf}
+			}
+		}
+	}
+	return s
 }

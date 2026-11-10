@@ -223,3 +223,36 @@ func TestRPCFetchDetails(t *testing.T) {
 		}
 	}
 }
+
+// The settings the node reports, for the Node settings section (story #13).
+func TestRPCRunningSettings(t *testing.T) {
+	results := map[string]string{
+		"getblockchaininfo": `{"chain":"signet","size_on_disk":1000,"pruned":true,"prune_target_size":576716800}`,
+		"uptime":            `60`,
+		"getnetworkinfo":    `{"networks":[],"localrelay":false}`,
+		"getnettotals":      `{"totalbytesrecv":1,"totalbytessent":1,"timemillis":1794300000000,"uploadtarget":{"target":5242880000}}`,
+		"getpeerinfo":       `[]`,
+		"getindexinfo":      `{"txindex":{"synced":true,"best_block_height":1}}`,
+		"getmempoolinfo":    `{"maxmempool":300000000}`,
+	}
+	srv := fakeCore(t, "alice", "pw", results)
+	defer srv.Close()
+	d, err := NewRPC(RPCConfig{URL: srv.URL, User: "alice", Password: "pw"}).FetchDetails(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := d.Running
+	if r == nil || r.Chain != "signet" || *r.Prune != 550 || *r.BlocksOnly != 1 || *r.MaxUploadTarget != 5000 ||
+		*r.TxIndex != 1 || *r.MaxMempool != 300 {
+		t.Fatalf("running = %+v", r)
+	}
+
+	// An older node without getindexinfo: txindex is unknown, the rest still works.
+	delete(results, "getindexinfo")
+	srv2 := fakeCore(t, "alice", "pw", results)
+	defer srv2.Close()
+	d, err = NewRPC(RPCConfig{URL: srv2.URL, User: "alice", Password: "pw"}).FetchDetails(context.Background())
+	if err != nil || d.Running.TxIndex != nil || *d.Running.MaxMempool != 300 {
+		t.Fatalf("without getindexinfo: %+v, %v", d.Running, err)
+	}
+}

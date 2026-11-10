@@ -149,7 +149,7 @@ The password is never logged.
 | `NODEDASH_NAME`        | `Node`                     | Your name for the node, at most 40 characters (see [Name and icon](#name-and-icon)) |
 | `BITCOIN_RPC_URL`      | `http://127.0.0.1:8332`    | Bitcoin Core JSON-RPC address                                                       |
 | `BITCOIN_DATADIR`      | `~/.bitcoin` (`/bitcoin` in Docker) | Bitcoin data directory; used for `bitcoin.conf`, the cookie file and to measure free disk space |
-| `BITCOIN_CONF`         | `$BITCOIN_DATADIR/bitcoin.conf` | Bitcoin Core config file to read `rpcuser`/`rpcpassword` from                 |
+| `BITCOIN_CONF`         | `$BITCOIN_DATADIR/bitcoin.conf` | Bitcoin Core config file to read `rpcuser`/`rpcpassword` and the [node settings](#node-settings) from |
 | `BITCOIN_RPC_COOKIE`   | `$BITCOIN_DATADIR/.cookie` | Cookie file for RPC authentication                                                  |
 | `BITCOIN_RPC_USER`     | _(empty)_                  | RPC user; when set, used instead of `bitcoin.conf` and the cookie file              |
 | `BITCOIN_RPC_PASSWORD` | _(empty)_                  | RPC password for `BITCOIN_RPC_USER`                                                 |
@@ -248,7 +248,8 @@ The **Details** link on each tile opens a page with the numbers behind it:
   - **On macOS:** only the disk.
 
   A figure that isn't available shows "—", with the reason.
-- **Mempool:** see below.
+- **Mempool:** see [Mempool and fees](#mempool-and-fees).
+- **Node settings:** see [Node settings](#node-settings).
 
 These extra numbers are only fetched while the page is open, at most once every 4 seconds, however many people look.
 The page never shows addresses: not your node's, and not those of its peers.
@@ -287,6 +288,28 @@ with the number of transactions waiting and their size. Its details section adds
   `rpcwhitelist` doesn't allow these calls, only the mempool shows "—"; the node stays reachable.
 - **Load:** `getmempoolinfo` runs with each poll. The fee estimates are asked again only after a new block, and at
   most once a minute.
+
+## Node settings
+
+The **Node settings** section on the details page shows eight common settings of Bitcoin Core: the database cache
+(`dbcache`), connections (`maxconnections`), mempool size (`maxmempool`), pruning (`prune`), the transaction index
+(`txindex`), incoming peers (`listen`), blocks only (`blocksonly`) and the upload limit (`maxuploadtarget`).
+
+- **The value:** what the node runs with, with its unit ("2,048 MiB", "300 MB", "Off").
+- **Where it comes from**, under the value:
+  - "bitcoin.conf", "bitcoin.conf · [main]" (a network section) or the name of an `includeconf` file;
+  - "Command line": a flag of bitcoind itself, e.g. `-prune=550` in `ExecStart=` of `bitcoind.service`, read from
+    `/proc`. In Docker, the dashboard can't see the bitcoind process, so this source doesn't show there;
+  - "Default": not set anywhere, so Bitcoin Core's default;
+  - "Running": the node reports it, but it isn't set where the dashboard can see it.
+- **Restart needed:** for pruning, the transaction index, the mempool size, the upload limit and blocks only, the node
+  also reports the value it runs with. If `bitcoin.conf` says something else, the section shows both, e.g.
+  "bitcoin.conf says 500 MB · restart to apply". This is information only: it never changes the status circle.
+- **The file:** the section says which `bitcoin.conf` it read (`BITCOIN_CONF`, or `bitcoin.conf` in the data
+  directory; a `-conf=` or `-datadir=` on bitcoind's command line wins). If the file is missing or can't be read, it
+  says why, and shows the defaults and what the node reports.
+- **Read-only, and nothing else leaves the server:** only these eight settings are in the API, never `rpcpassword`,
+  `rpcauth` or any other line of the file. Like the other details, they are only read while the page is open.
 
 ## Name and icon
 

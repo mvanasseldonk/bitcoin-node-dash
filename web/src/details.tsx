@@ -3,7 +3,7 @@
 
 import type { ComponentChildren } from 'preact'
 import { useEffect, useState } from 'preact/hooks'
-import { fetchDetails, type Details, type Mempool, type Snapshot } from './api'
+import { fetchDetails, type Details, type Mempool, type Setting, type Settings, type Snapshot } from './api'
 import { ago, formatBytes, formatFee, formatRate, formatVMB, isZeroTime, longDuration } from './format'
 import { FEE_LABELS, softwareLine } from './tiles'
 import { AutoUpdateRow, DashboardRow, UpdateBox } from './update'
@@ -205,6 +205,8 @@ export function DetailsPage({ snap, now, section }: Props) {
 
       <MempoolSection m={data?.mempool} />
 
+      <SettingsSection s={details?.settings ?? null} />
+
       <section class="tile details-section" id="details-server" aria-labelledby="h-server">
         <h2 class="tile-title" id="h-server">
           Server
@@ -268,6 +270,106 @@ function MempoolSection({ m }: { m: Mempool | null | undefined }) {
           )
         })}
       </dl>
+    </section>
+  )
+}
+
+/** Names and one-line explanations of the settings (story #13). */
+const SETTINGS: Record<string, { label: string; hint: string }> = {
+  dbcache: { label: 'Database cache', hint: 'Memory for the chain state; more speeds up syncing' },
+  maxconnections: { label: 'Connections', hint: 'Most peers at once, in and out' },
+  maxmempool: { label: 'Mempool size', hint: 'Memory for waiting transactions' },
+  prune: { label: 'Pruning', hint: 'Delete old blocks to save disk' },
+  txindex: { label: 'Transaction index', hint: 'Look up any transaction; uses about 60 GB' },
+  listen: { label: 'Incoming peers', hint: 'Let other nodes connect to yours' },
+  blocksonly: { label: 'Blocks only', hint: 'No mempool: saves bandwidth, no fee estimates' },
+  maxuploadtarget: { label: 'Upload limit', hint: 'Most data sent to peers per day' },
+}
+
+const num = (n: number) => n.toLocaleString('en-US')
+
+/** A setting's value in words: "2,048 MiB", "Off · keeps all blocks", "Unlimited". */
+function settingValue(key: string, v: number | null | undefined): string {
+  if (v == null) return key === 'dbcache' ? 'Default' : '—'
+  switch (key) {
+    case 'dbcache':
+      return `${num(v)} MiB`
+    case 'maxmempool':
+      return `${num(v)} MB`
+    case 'prune':
+      return v === 0 ? 'Off · keeps all blocks' : v === 1 ? 'Manual' : `${num(v)} MiB`
+    case 'txindex':
+    case 'listen':
+    case 'blocksonly':
+      return v ? 'On' : 'Off'
+    case 'maxuploadtarget':
+      return v === 0 ? 'Unlimited' : `${num(v)} MiB`
+  }
+  return num(v)
+}
+
+/** Where a value comes from: "Default", "bitcoin.conf · [main]", "extra.conf (included)". */
+function settingSource(s: Setting): string {
+  switch (s.source) {
+    case 'default':
+      return 'Default'
+    case 'conf':
+      return s.sourceDetail ? `bitcoin.conf · ${s.sourceDetail}` : 'bitcoin.conf'
+    case 'include':
+      return `${s.sourceDetail ?? 'included file'} (included)`
+    case 'cmdline':
+      return 'Command line'
+    case 'running':
+      return 'Running'
+  }
+  return 'Unknown'
+}
+
+/** The node's main settings, read-only (story #13). */
+function SettingsSection({ s }: { s: Settings | null }) {
+  return (
+    <section class="tile details-section" id="details-settings" aria-labelledby="h-settings">
+      <h2 class="tile-title" id="h-settings">
+        Node settings
+      </h2>
+      {s?.fileError && <p class="details-section-note">{s.fileError}. The values below come from the node itself, or are Bitcoin Core’s defaults.</p>}
+      <dl class="detail-rows">
+        {(s?.items ?? []).map((it) => {
+          const meta = SETTINGS[it.key] ?? { label: it.key, hint: '' }
+          let hint = <span class="detail-hint">{meta.hint}</span>
+          if (it.confValue != null) {
+            hint = (
+              <span class="detail-hint tone-warning">
+                bitcoin.conf says {settingValue(it.key, it.confValue)} · restart to apply
+              </span>
+            )
+          } else if (it.invalid) {
+            hint = <span class="detail-hint tone-warning">“{it.invalid}” isn’t a valid number</span>
+          }
+          return (
+            <div class="detail-row" key={it.key}>
+              <dt>
+                <span>
+                  {meta.label} <code class="detail-key">{it.key}</code>
+                </span>
+                {hint}
+              </dt>
+              <dd class="detail-value-source">
+                {settingValue(it.key, it.value)}
+                <span class="detail-hint" title={it.source === 'cmdline' ? it.sourceDetail : undefined}>
+                  {settingSource(it)}
+                </span>
+              </dd>
+            </div>
+          )
+        })}
+        {!s && <Row label="Settings">{dash}</Row>}
+      </dl>
+      {s?.path && (
+        <p class="details-path">
+          Read from <code>{s.path}</code>
+        </p>
+      )}
     </section>
   )
 }

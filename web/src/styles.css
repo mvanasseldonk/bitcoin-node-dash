@@ -1148,3 +1148,34 @@ body {
 .peer-meta {
   font-size: 14px;
 }
+
+/* Node settings (#13) */
+.details-section-note {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.detail-key,
+.details-path code {
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 12px;
+  color: var(--muted);
+}
+.detail-value-source {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+.details-path {
+  margin: 20px 0 0;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.detail-hint.tone-warning {
+  color: var(--warning);
+}
