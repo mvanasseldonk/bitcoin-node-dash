@@ -88,6 +88,7 @@ func (r *RPC) FetchDetails(ctx context.Context) (*model.Details, error) {
 		d.FetchedAt = time.Now().UTC()
 	}
 	d.Running = r.runningSettings(ctx, bc.Chain, bc.Pruned, bc.PruneTargetSize, ni.LocalRelay, totals.UploadTarget.Target)
+	d.Running.Started = d.FetchedAt.Add(-time.Duration(uptime) * time.Second)
 	return d, nil
 }
 

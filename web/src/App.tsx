@@ -5,6 +5,7 @@ import { Tiles } from './tiles'
 import { ControlSheet, PowerButton, useControl } from './control'
 import { DetailsPage, useRoute } from './details'
 import { PeersPage } from './peers'
+import { SettingsPage } from './settings'
 import { AncoroLine, ANCORO, Mark, NAME, useBrand, type Tone } from './brand'
 import { useChangeKey } from './motion'
 import { ThemeSwitch } from './theme'
@@ -202,6 +203,10 @@ export function App() {
       ) : route.page === 'peers' ? (
         <main class="main" key="peers">
           <PeersPage now={now} />
+        </main>
+      ) : route.page === 'settings' ? (
+        <main class="main" key="settings">
+          <SettingsPage restart={control.enabled ? () => control.run('restart') : null} progress={control.progress} />
         </main>
       ) : (
         <main class="main" key="dashboard">

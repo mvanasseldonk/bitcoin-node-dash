@@ -165,7 +165,7 @@ export interface Setting {
   key: string
   /** In the setting's unit (MiB, MB, a count, 0/1); null when unknown. */
   value: number | null
-  source: 'default' | 'conf' | 'include' | 'cmdline' | 'running' | 'unknown'
+  source: 'default' | 'conf' | 'include' | 'cmdline' | 'settingsfile' | 'running' | 'unknown'
   /** The section ("[main]"), the included file, or the command-line flag. */
   sourceDetail?: string
   /** What bitcoin.conf says when the node runs with something else. */
@@ -179,6 +179,10 @@ export interface Settings {
   path: string
   fileError?: string
   items: Setting[]
+  /** The settings form is on (NODEDASH_SETTINGS=1, story #55). */
+  editable?: boolean
+  /** The form saved a change and bitcoind hasn't restarted since. */
+  restartNeeded?: boolean
 }
 
 export interface Details {
@@ -248,5 +252,80 @@ export async function fetchDetails(signal: AbortSignal): Promise<Details> {
   })
   const body = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(body.error || `details ${res.status}`)
+  return body
+}
+
+// Settings form (story #55). Mirrors model.SettingsForm.
+
+export interface SettingField {
+  key: string
+  /** What is configured; null when not set anywhere, so the default applies. */
+  value: number | null
+  /** Bitcoin Core's default; null when it depends on the version. */
+  default: number | null
+  /** What the node runs with, when it reports it. */
+  running: number | null
+  source: Setting['source']
+  sourceDetail?: string
+  /** Why the form can't change it, e.g. set on the command line. */
+  locked?: string
+}
+
+export interface SettingChange {
+  key: string
+  from: number | null
+  to: number
+}
+
+export interface SettingsForm {
+  path: string
+  /** Identifies bitcoin.conf as read; a save sends it back. */
+  hash: string
+  /** Why the form can't save; the fields are then read-only. */
+  error?: string
+  fields: SettingField[]
+  /** Whether the node reports it is pruned; null when unknown. */
+  pruned: boolean | null
+  memTotalBytes: number
+  diskFreeBytes: number
+  service: string
+  /** The last save, while bitcoind hasn't restarted since. */
+  saved: { at: string; changes: SettingChange[]; restartNeeded: boolean } | null
+}
+
+/** Returns null when changing settings is off (404). */
+export async function fetchSettings(signal: AbortSignal): Promise<SettingsForm | null> {
+  const res = await fetch('/api/settings', {
+    signal: AbortSignal.any([signal, AbortSignal.timeout(FETCH_TIMEOUT_MS)]),
+    cache: 'no-store',
+  })
+  if (res.status === 404) return null
+  const body = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(body.error || `settings ${res.status}`)
+  return body
+}
+
+/** Why a save was refused. */
+export class SaveError extends Error {
+  /** bitcoin.conf changed since the form read it. */
+  conflict: boolean
+  /** Setting → why its new value is refused. */
+  fields: Record<string, string>
+  constructor(message: string, conflict: boolean, fields: Record<string, string>) {
+    super(message)
+    this.conflict = conflict
+    this.fields = fields
+  }
+}
+
+export async function saveSettings(hash: string, changes: Record<string, number>): Promise<SettingsForm> {
+  const res = await fetch('/api/settings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ hash, changes }),
+    signal: AbortSignal.timeout(15_000),
+  })
+  const body = await res.json().catch(() => ({}))
+  if (!res.ok) throw new SaveError(body.error || `The dashboard refused the save (${res.status})`, !!body.conflict, body.fields ?? {})
   return body
 }

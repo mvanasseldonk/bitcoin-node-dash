@@ -18,12 +18,7 @@ import (
 func WithControl(c *control.Controller, hosts []string) Option {
 	return func(cfg *config) {
 		mux := cfg.mux
-		g := guard{hosts: map[string]bool{}}
-		for _, h := range hosts {
-			if h = strings.ToLower(strings.TrimSpace(h)); h != "" {
-				g.hosts[h] = true
-			}
-		}
+		g := newGuard(hosts)
 
 		mux.HandleFunc("GET /api/control", func(w http.ResponseWriter, r *http.Request) {
 			if err := g.checkHost(r); err != nil {
@@ -62,6 +57,16 @@ func WithControl(c *control.Controller, hosts []string) Option {
 	}
 }
 
+func newGuard(hosts []string) guard {
+	g := guard{hosts: map[string]bool{}}
+	for _, h := range hosts {
+		if h = strings.ToLower(strings.TrimSpace(h)); h != "" {
+			g.hosts[h] = true
+		}
+	}
+	return g
+}
+
 // guard protects the control endpoints against requests from web pages in a
 // browser on the LAN: cross-site requests and DNS rebinding (decision 0001).
 type guard struct {
@@ -80,7 +85,7 @@ func (g guard) checkHost(r *http.Request) error {
 	if net.ParseIP(host) != nil || host == "localhost" || g.hosts[host] {
 		return nil
 	}
-	return errors.New("node control is only available via the server's IP address, localhost, or a host name in NODEDASH_HOSTS (got " + host + ")")
+	return errors.New("only available via the server's IP address, localhost, or a host name in NODEDASH_HOSTS (got " + host + ")")
 }
 
 // checkPost requires JSON, which browsers only send cross-site after a CORS

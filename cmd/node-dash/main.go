@@ -206,16 +206,50 @@ func run(log *slog.Logger) error {
 	if os.Getenv("NODEDASH_ANCORO") == "0" {
 		opts = append(opts, server.WithoutAncoro())
 	}
+	var hosts []string
+	if v := os.Getenv("NODEDASH_HOSTS"); v != "" {
+		hosts = strings.Split(v, ",")
+	}
+	// Changing settings (story #55) is opt-in, and not for Docker, where
+	// bitcoin.conf is mounted read-only (decision 0003).
+	editSettings := os.Getenv("NODEDASH_SETTINGS") == "1"
+	if editSettings && inDocker {
+		log.Warn("NODEDASH_SETTINGS=1 is not supported in Docker: the node settings stay read-only")
+		editSettings = false
+	}
 	if ds, ok := src.(source.DetailSource); ok {
 		var sys source.ServerReader
 		var conf source.SettingsReader
-		if r, ok := src.(*source.Mock); ok {
-			sys, conf = r, r
+		var editor *settings.Reader
+		stateDir := settingsStateDir()
+		if m, ok := src.(*source.Mock); ok {
+			sys, conf = m, m
+			if editSettings {
+				r, dir, err := mockSettings(os.Getenv("NODEDASH_MOCK"))
+				if err != nil {
+					return err
+				}
+				conf, editor, stateDir = r, r, dir
+			}
 		} else {
 			sys = source.NewSystem(dataDir())
-			conf = settings.New(confPath(), dataDir())
+			r := settings.New(confPath(), dataDir())
+			conf = r
+			if editSettings {
+				editor = r
+			}
 		}
-		opts = append(opts, server.WithDetails(details.New(ds, sys, conf, log)))
+		det := details.New(ds, sys, conf, log)
+		opts = append(opts, server.WithDetails(det))
+		if editor != nil {
+			service := envOr("BITCOIN_SERVICE", "bitcoind.service")
+			if err := editor.EnableEditing(stateDir, service, log); err != nil {
+				log.Error("can't turn on changing settings; they stay read-only", "err", err)
+			} else {
+				opts = append(opts, server.WithSettings(det, editor, hosts))
+				log.Info("changing settings enabled", "conf", editor.ConfPath, "backups", filepath.Join(stateDir, "backups"))
+			}
+		}
 	}
 	if ps, ok := src.(source.PeerSource); ok {
 		// Peer addresses only on request: the dashboard has no login (#12).
@@ -227,10 +261,6 @@ func run(log *slog.Logger) error {
 		ready := func() bool {
 			s := p.Snapshot()
 			return s.Reachable && s.Health.Level != model.Starting
-		}
-		var hosts []string
-		if v := os.Getenv("NODEDASH_HOSTS"); v != "" {
-			hosts = strings.Split(v, ",")
 		}
 		ctrl := control.New(unit, ready, log)
 		if os.Getenv("NODEDASH_MOCK") != "" {
@@ -318,6 +348,37 @@ func newSource(log *slog.Logger) (source.Source, error) {
 	rpc := source.NewRPC(cfg)
 	log.Info("using Bitcoin Core RPC", "url", cfg.URL, "auth", rpc.AuthSource(), "datadir", cfg.DataDir)
 	return rpc, nil
+}
+
+// settingsStateDir holds the backups of bitcoin.conf and the time of the
+// last save: StateDirectory= of the drop-in install.sh writes, which systemd
+// passes as STATE_DIRECTORY.
+func settingsStateDir() string {
+	if d, _, _ := strings.Cut(os.Getenv("STATE_DIRECTORY"), ":"); d != "" {
+		return d
+	}
+	return "/var/lib/node-dash-settings"
+}
+
+// mockSettings is a demo bitcoin.conf in a temporary directory, so the
+// settings form can be tried in mock mode. In "outdated", pruning is set on
+// the command line.
+func mockSettings(scenario string) (*settings.Reader, string, error) {
+	dir, err := os.MkdirTemp("", "node-dash-mock-settings-")
+	if err != nil {
+		return nil, "", err
+	}
+	conf := "# Demo bitcoin.conf of the mock mode (NODEDASH_MOCK)\nserver=1\nrpcuser=satoshi\nrpcpassword=not-a-real-password\ndbcache=2048\ntxindex=1\n\n[main]\nmaxuploadtarget=5000\n"
+	var args []string
+	if scenario == "outdated" {
+		conf = strings.Replace(conf, "txindex=1\n", "", 1)
+		args = []string{"-prune=550"}
+	}
+	path := filepath.Join(dir, "bitcoin.conf")
+	if err := os.WriteFile(path, []byte(conf), 0o600); err != nil {
+		return nil, "", err
+	}
+	return settings.New(path, dir).WithArgs(args), filepath.Join(dir, "state"), nil
 }
 
 // confPath is bitcoin.conf: BITCOIN_CONF, or bitcoin.conf in the data directory.

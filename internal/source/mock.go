@@ -171,11 +171,12 @@ func (m *Mock) FetchDetails(ctx context.Context) (*model.Details, error) {
 	m.startOnce.Do(func() { m.started = now })
 	elapsed := now.Sub(m.started).Seconds()
 
+	uptime := int64((12*24+4)*3600 + elapsed)
 	d := &model.Details{
 		FetchedAt: now,
-		Running:   &model.RunningSettings{Chain: "main"},
+		Running:   &model.RunningSettings{Chain: "main", Started: now.Add(-time.Duration(uptime) * time.Second)},
 		Blockchain: &model.BlockchainDetails{
-			UptimeSec:       int64((12*24+4)*3600 + elapsed),
+			UptimeSec:       uptime,
 			SizeOnDiskBytes: 742 * gb,
 		},
 		Network: &model.NetworkDetails{

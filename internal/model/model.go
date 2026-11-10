@@ -213,6 +213,9 @@ const (
 	FromCmdline = "cmdline" // bitcoind's command line; SourceDetail is the flag
 	FromRunning = "running" // the node reports it; where it is set is unknown
 	FromUnknown = "unknown"
+	// FromSettingsFile is Bitcoin Core's settings.json, which wins over
+	// bitcoin.conf (story #55).
+	FromSettingsFile = "settingsfile"
 )
 
 // Settings are the main settings of the node, read-only (story #13). Only
@@ -223,6 +226,12 @@ type Settings struct {
 	// FileError says why bitcoin.conf couldn't be read, in plain language.
 	FileError string    `json:"fileError,omitempty"`
 	Items     []Setting `json:"items"`
+	// Editable is true when the settings form is on (NODEDASH_SETTINGS=1,
+	// story #55).
+	Editable bool `json:"editable,omitempty"`
+	// RestartNeeded is true when the form saved a change and bitcoind
+	// hasn't restarted since.
+	RestartNeeded bool `json:"restartNeeded,omitempty"`
 }
 
 // Setting is one setting and where its value comes from.
@@ -251,6 +260,66 @@ type RunningSettings struct {
 	MaxMempool      *int64 // MB
 	MaxUploadTarget *int64 // MiB, 0 unlimited
 	BlocksOnly      *int64
+	// Started is when bitcoind started, from its uptime; zero when unknown.
+	Started time.Time
+}
+
+// SettingsForm is what the settings form shows and edits (story #55). Like
+// Settings, it holds only the main settings: never other lines of
+// bitcoin.conf.
+type SettingsForm struct {
+	// Path is the bitcoin.conf the form saves to.
+	Path string `json:"path"`
+	// Hash identifies bitcoin.conf as read (an HMAC with a key of this
+	// process). A save sends it back, and is refused when the file changed
+	// since.
+	Hash string `json:"hash"`
+	// Error says why the form can't save, e.g. a file that isn't writable.
+	// The fields are then shown, read-only.
+	Error  string         `json:"error,omitempty"`
+	Fields []SettingField `json:"fields"`
+	// Pruned is whether the node reports it is pruned; nil when unknown.
+	Pruned *bool `json:"pruned"`
+	// MemTotalBytes and DiskFreeBytes are the server's, for the hints; 0
+	// when unknown.
+	MemTotalBytes uint64 `json:"memTotalBytes"`
+	DiskFreeBytes uint64 `json:"diskFreeBytes"`
+	// Service is bitcoind's systemd service, for the restart command.
+	Service string `json:"service"`
+	// Saved is the last save, while bitcoind hasn't restarted since.
+	Saved *SavedSettings `json:"saved"`
+}
+
+// SettingField is one setting in the form.
+type SettingField struct {
+	Key string `json:"key"`
+	// Value is what is configured: in bitcoin.conf, or where Source says.
+	// Nil when it isn't set anywhere, so Default applies.
+	Value *int64 `json:"value"`
+	// Default is Bitcoin Core's default; nil when it depends on the version.
+	Default *int64 `json:"default"`
+	// Running is what the node runs with, when it reports it.
+	Running      *int64 `json:"running"`
+	Source       string `json:"source"`
+	SourceDetail string `json:"sourceDetail,omitempty"`
+	// Locked says why the form can't change this setting, e.g. it is set on
+	// the command line.
+	Locked string `json:"locked,omitempty"`
+}
+
+// SavedSettings is a save of the settings form.
+type SavedSettings struct {
+	At      time.Time       `json:"at"`
+	Changes []SettingChange `json:"changes"`
+	// RestartNeeded is true until bitcoind has started after At.
+	RestartNeeded bool `json:"restartNeeded"`
+}
+
+// SettingChange is one changed setting. From is nil when it wasn't set.
+type SettingChange struct {
+	Key  string `json:"key"`
+	From *int64 `json:"from"`
+	To   int64  `json:"to"`
 }
 
 // ServerDetails are the figures of the machine the dashboard runs on
