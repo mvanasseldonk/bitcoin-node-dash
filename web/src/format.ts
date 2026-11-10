@@ -25,7 +25,8 @@ export function ago(iso: string, now: number): string {
 export function formatBytes(bytes: number): string {
   if (bytes >= 1e12) return `${(bytes / 1e12).toFixed(1)} TB`
   if (bytes >= 1e9) return `${Math.round(bytes / 1e9)} GB`
-  return `${Math.round(bytes / 1e6)} MB`
+  if (bytes >= 1e6) return `${Math.round(bytes / 1e6)} MB`
+  return `${Math.round(bytes / 1e3)} kB`
 }
 
 /** A fee rate in sat/vB, already rounded by the server: "0.1", "2.4", "4", "86". */

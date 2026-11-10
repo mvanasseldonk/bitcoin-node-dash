@@ -4,6 +4,7 @@ import { ago, clockTime, isZeroTime, shortDuration } from './format'
 import { Tiles } from './tiles'
 import { ControlSheet, PowerButton, useControl } from './control'
 import { DetailsPage, useRoute } from './details'
+import { PeersPage } from './peers'
 import { AncoroLine, ANCORO, Mark, NAME, useBrand, type Tone } from './brand'
 import { useChangeKey } from './motion'
 import { ThemeSwitch } from './theme'
@@ -168,7 +169,7 @@ export function App() {
   return (
     <div class={`page ${intro ? 'intro' : ''}`}>
       <header class="header">
-        {route.page === 'details' ? (
+        {route.page !== 'dashboard' ? (
           <a class="back" href="#/">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M15 6l-6 6 6 6" />
@@ -197,6 +198,10 @@ export function App() {
       {route.page === 'details' ? (
         <main class="main" key="details">
           <DetailsPage snap={snap} now={now} section={route.section} />
+        </main>
+      ) : route.page === 'peers' ? (
+        <main class="main" key="peers">
+          <PeersPage now={now} />
         </main>
       ) : (
         <main class="main" key="dashboard">

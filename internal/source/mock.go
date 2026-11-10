@@ -219,3 +219,70 @@ func (m *Mock) ReadServer() model.ServerDetails {
 	}
 	return d
 }
+
+// mockPeer is a peer of the mock node: connected for age, with a ping in ms
+// (0: not measured yet), and MB sent and received.
+type mockPeer struct {
+	network, typ, subver, addr string
+	inbound, encrypted         bool
+	age                        time.Duration
+	ping                       float64
+	sentMB, recvMB             float64
+}
+
+// mockPeers matches the Network tile: 10 outgoing, 6 incoming.
+var mockPeers = []mockPeer{
+	{"onion", "outbound-full-relay", "/Satoshi:28.1.0/", "vww6ybal4bd7szmgncyruucpgfkqahzddi37ktceo3ah7ngmcopnpyyd.onion:8333", false, true, 6*24*time.Hour + 3*time.Hour, 182, 1200, 310},
+	{"ipv4", "outbound-full-relay", "/Satoshi:30.0.0/", "203.0.113.24:8333", false, true, 6*24*time.Hour + time.Hour, 38, 2400, 420},
+	{"ipv4", "block-relay-only", "/Satoshi:29.2.0/Knots:20251010/", "198.51.100.7:8333", false, false, 5*24*time.Hour + 7*time.Hour, 41, 88, 1100},
+	{"ipv6", "inbound", "/Satoshi:27.0.0/", "[2001:db8::4a1]:51234", true, true, 2*24*time.Hour + 5*time.Hour, 64, 640, 96},
+	{"onion", "outbound-full-relay", "/Satoshi:29.0.0/", "kdt2yb7lmq4f6nxw2rvcz5oe3wq4hjuadt5y7cbmxkqu2hwvs3z6ryad.onion:8333", false, true, 2 * 24 * time.Hour, 205, 480, 160},
+	{"ipv4", "outbound-full-relay", "/Satoshi:30.0.0/", "192.0.2.44:8333", false, true, 30 * time.Hour, 29, 720, 190},
+	{"onion", "manual", "/Satoshi:30.0.0/", "p53lf57qovyuvwsc6xnrppyply3vtqm7l6pcobkmyqsiofyeznfu5uqd.onion:8333", false, true, 9 * time.Hour, 240, 210, 58},
+	{"ipv6", "inbound", "/Satoshi:30.0.0/", "[2001:db8:5::17]:40332", true, true, 7 * time.Hour, 52, 180, 22},
+	{"ipv4", "outbound-full-relay", "/Satoshi:28.1.0/", "198.51.100.140:8333", false, false, 5 * time.Hour, 74, 95, 44},
+	{"onion", "inbound", "/Satoshi:30.0.0/", "127.0.0.1:43122", true, true, 3*time.Hour + 12*time.Minute, 412, 14, 2.1},
+	{"i2p", "block-relay-only", "/Satoshi:29.0.0/", "ukeu3k5oycgaauneqgtnvselmt4yemvoilkln7jpvamvfx7dnkdq.b32.i2p:0", false, false, 2*time.Hour + 10*time.Minute, 1400, 3, 41},
+	{"ipv4", "outbound-full-relay", "/Satoshi:30.0.0/", "203.0.113.201:8333", false, true, 95 * time.Minute, 33, 22, 9},
+	{"ipv4", "inbound", "/btcwire:0.5.0/btcd:0.24.2/", "192.0.2.181:40112", true, false, 41 * time.Minute, 96, 12, 1.8},
+	{"ipv4", "inbound", "/Satoshi:29.1.0/", "198.51.100.33:52210", true, false, 18 * time.Minute, 120, 4, 0.9},
+	{"onion", "inbound", "/Satoshi:30.0.0/", "127.0.0.1:50918", true, true, 6 * time.Minute, 380, 1.2, 0.4},
+	{"ipv4", "feeler", "/Satoshi:30.0.0/", "198.51.100.92:8333", false, true, 12 * time.Second, 0, 0.001, 0.002},
+}
+
+// FetchPeers implements PeerSource. The error scenario has no peers.
+func (m *Mock) FetchPeers(ctx context.Context) ([]model.Peer, error) {
+	switch m.scenario {
+	case "unreachable":
+		return nil, ErrMockUnreachable
+	case "starting":
+		return nil, &StartingError{Status: "Loading block index…"}
+	case "stale":
+		<-ctx.Done()
+		return nil, ctx.Err()
+	case "error":
+		return []model.Peer{}, nil
+	}
+	now := m.now()
+	peers := make([]model.Peer, len(mockPeers))
+	for i, p := range mockPeers {
+		peers[i] = model.Peer{
+			ID:          int64(i + 1),
+			Network:     p.network,
+			Inbound:     p.inbound,
+			Type:        ConnectionType(p.typ),
+			Client:      PeerClient(p.subver),
+			ConnectedAt: now.Add(-p.age).Truncate(time.Second).UTC(),
+			SentBytes:   uint64(p.sentMB * 1e6),
+			RecvBytes:   uint64(p.recvMB * 1e6),
+			Encrypted:   p.encrypted,
+			Address:     p.addr,
+		}
+		if p.ping > 0 {
+			ping := p.ping
+			peers[i].PingMs = &ping
+		}
+	}
+	SortPeers(peers)
+	return peers, nil
+}

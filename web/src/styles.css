@@ -937,3 +937,214 @@ body {
   clip-path: inset(50%);
   white-space: nowrap;
 }
+
+/* Peers page (#12): as wide as the dashboard; a table, or cards at phone width. */
+.detail-with-link {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 14px;
+}
+.detail-with-link a {
+  color: var(--ink);
+  font-size: 14px;
+  text-decoration-color: var(--faint);
+  text-underline-offset: 3px;
+}
+.peers {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-top: 8px;
+}
+.peers-back {
+  align-self: flex-start;
+  color: var(--muted);
+  font-size: 14px;
+  text-decoration: none;
+}
+.peers-back:hover {
+  color: var(--ink);
+}
+.peers-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 4px;
+}
+.peers-head .details-title {
+  margin: 0;
+}
+.peers-summary {
+  margin: 0;
+  color: var(--muted);
+}
+.peers-empty-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 500;
+}
+.peers-empty-text {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.peers .stale {
+  opacity: 0.45;
+}
+.peer-table {
+  padding: 8px 28px;
+}
+.peer-table table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+.peer-table th {
+  padding: 10px 0;
+  text-align: left;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+}
+.peer-table th:nth-child(1) {
+  width: 32%;
+}
+.peer-table th:nth-child(3) {
+  width: 80px;
+}
+.peer-table th:nth-child(4) {
+  width: 104px;
+}
+.peer-table th:nth-child(5) {
+  width: 150px;
+}
+.peer-table th:nth-child(6) {
+  width: 132px;
+  padding-left: 24px;
+}
+.peer-table td {
+  padding: 14px 0;
+  border-top: 1px solid var(--line);
+  vertical-align: baseline;
+}
+.peer-table td:nth-child(6) {
+  padding-left: 24px;
+}
+.peer-table td:first-child,
+.peer-table td:nth-child(2) {
+  padding-right: 16px;
+}
+.peer-table .end {
+  text-align: right;
+}
+.sort-button {
+  padding: 4px 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.sort-button:hover,
+.sort-button.on {
+  color: var(--ink);
+}
+.sort-button.on {
+  font-weight: 600;
+}
+.sort-button:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.peer-first,
+.peer-table td:nth-child(2) {
+  overflow: hidden;
+}
+.peer-first > span,
+.peer-table td:nth-child(2) > span {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.peer-net,
+.peer-slash,
+.peer-type,
+.peer-meta {
+  color: var(--muted);
+}
+.peer-type {
+  margin-top: 3px;
+  font-size: 13px;
+}
+.peer-address {
+  margin-top: 3px;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 12px;
+  color: var(--muted);
+}
+.peer-num {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.peer-transport {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.peer-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.peers-sort {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 44px;
+  padding: 0 16px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  font-size: 14px;
+}
+.peers-sort-label {
+  color: var(--muted);
+  flex: none;
+}
+.peers-sort select {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+}
+.peer-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 16px 18px;
+  border-radius: 20px;
+  background: var(--surface);
+}
+.peer-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+.peer-card .peer-name,
+.peer-card .peer-address {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.peer-meta {
+  font-size: 14px;
+}

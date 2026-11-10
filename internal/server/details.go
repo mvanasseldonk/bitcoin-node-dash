@@ -23,3 +23,18 @@ func WithDetails(d DetailsProvider) Option {
 		})
 	}
 }
+
+// PeersProvider returns the list for the Peers page.
+type PeersProvider interface {
+	Get(ctx context.Context) *model.Peers
+}
+
+// WithPeers adds GET /api/peers (story #12). It always answers 200: when the
+// node can't be reached, nodeError says why.
+func WithPeers(p PeersProvider) Option {
+	return func(cfg *config) {
+		cfg.mux.HandleFunc("GET /api/peers", func(w http.ResponseWriter, r *http.Request) {
+			writeJSON(w, http.StatusOK, p.Get(r.Context()))
+		})
+	}
+}
