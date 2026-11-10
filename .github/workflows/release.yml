@@ -1,7 +1,8 @@
 name: Release
 
 # Pushing a tag like v0.1.0 creates a GitHub Release with ready-to-run
-# binaries for Linux and macOS. The Docker workflow publishes the image.
+# binaries for Linux and macOS, and checksums.txt signed with minisign. The
+# Docker workflow publishes the image.
 
 on:
   push:
@@ -13,6 +14,9 @@ permissions:
 jobs:
   binaries:
     runs-on: ubuntu-latest
+    # The minisign key is a secret of this environment, which only v* tags
+    # may use (story #50).
+    environment: release
     steps:
       - uses: actions/checkout@v7
 
@@ -45,6 +49,33 @@ jobs:
           done
           (cd dist && sha256sum *.tar.gz > checksums.txt)
           ls -la dist
+
+      # Sign checksums.txt in minisign's legacy format (-l), which node-dash
+      # verifies with Go's Ed25519. The trusted comment names the release, so
+      # an old signature can't pass for a newer release.
+      - name: Sign checksums.txt
+        env:
+          MINISIGN_KEY: ${{ secrets.MINISIGN_KEY }}
+          MINISIGN_PASSWORD: ${{ secrets.MINISIGN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq && sudo apt-get install -y -qq minisign
+          umask 077
+          key=$(mktemp)
+          trap 'rm -f "$key"' EXIT
+          printf '%s\n' "$MINISIGN_KEY" > "$key"
+          printf '%s\n' "$MINISIGN_PASSWORD" |
+            minisign -S -l -s "$key" -m dist/checksums.txt -t "node-dash ${GITHUB_REF_NAME}"
+
+      # Check it as a server will: with the key in minisign.pub, with
+      # minisign and with the node-dash binary just built.
+      - name: Verify the signature
+        run: |
+          set -euo pipefail
+          minisign -V -p minisign.pub -m dist/checksums.txt | tee verify.txt
+          grep -qx "Trusted comment: node-dash ${GITHUB_REF_NAME}" verify.txt
+          ./build/node-dash_${GITHUB_REF_NAME}_linux_amd64/node-dash verify \
+            dist/checksums.txt dist/checksums.txt.minisig "${GITHUB_REF_NAME}"
 
       - uses: softprops/action-gh-release@v3
         with:

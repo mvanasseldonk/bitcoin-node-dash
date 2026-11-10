@@ -854,6 +854,11 @@ body {
 .detail-hint-news {
   color: var(--ink);
 }
+/* A failed automatic update (#50): readable warning text, not an alarm. */
+.detail-hint-problem {
+  color: var(--warning);
+  white-space: normal;
+}
 .update-box {
   margin-top: 14px;
   padding: 14px 16px;

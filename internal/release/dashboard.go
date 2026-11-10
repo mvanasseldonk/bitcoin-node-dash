@@ -59,7 +59,7 @@ func Dashboard(version string, latest Latest, docker bool) model.Dashboard {
 		return d // not looked up yet, or GitHub couldn't be reached
 	}
 	d.Latest = r.Tag()
-	if r.newer(own) {
+	if r.Newer(own) {
 		d.Available = true
 		d.URL = dashboardReleaseURL + d.Latest
 	}

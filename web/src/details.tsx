@@ -6,7 +6,7 @@ import { useEffect, useState } from 'preact/hooks'
 import { fetchDetails, type Details, type Snapshot } from './api'
 import { ago, formatBytes, formatRate, isZeroTime, longDuration } from './format'
 import { softwareLine } from './tiles'
-import { DashboardRow, UpdateBox } from './update'
+import { AutoUpdateRow, DashboardRow, UpdateBox } from './update'
 
 const REFRESH_MS = 5_000
 
@@ -202,6 +202,7 @@ export function DetailsPage({ snap, now, section }: Props) {
         </h2>
         <dl class="detail-rows">
           <ServerRows srv={srv} />
+          {dash?.autoUpdate && <AutoUpdateRow auto={dash.autoUpdate} now={now} />}
           {dash && <DashboardRow dash={dash} />}
         </dl>
         {dash?.available && <UpdateBox dash={dash} />}

@@ -47,10 +47,11 @@ func (r Release) String() string {
 }
 
 func (r Release) newerThan(s model.Software) bool {
-	return r.newer(Release{s.Major, s.Minor, s.Patch})
+	return r.Newer(Release{s.Major, s.Minor, s.Patch})
 }
 
-func (r Release) newer(o Release) bool {
+// Newer tells whether r is a later version than o.
+func (r Release) Newer(o Release) bool {
 	if r.Major != o.Major {
 		return r.Major > o.Major
 	}
@@ -180,13 +181,19 @@ func (c *Checker) Check(ctx context.Context) error {
 }
 
 func (c *Checker) fetch(ctx context.Context) (Release, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.url, nil)
+	return FetchLatest(ctx, c.client, c.url, c.userAgent, c.parse)
+}
+
+// FetchLatest asks a GitHub releases/latest API once for the latest
+// release; parse decides which tags count.
+func FetchLatest(ctx context.Context, client *http.Client, url, userAgent string, parse func(tag string) (Release, bool)) (Release, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return Release{}, err
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("User-Agent", c.userAgent)
-	resp, err := c.client.Do(req)
+	req.Header.Set("User-Agent", userAgent)
+	resp, err := client.Do(req)
 	if err != nil {
 		return Release{}, err
 	}
@@ -205,7 +212,7 @@ func (c *Checker) fetch(ctx context.Context) (Release, error) {
 	if body.Prerelease || body.Draft {
 		return Release{}, errors.New("GitHub's latest release is a pre-release")
 	}
-	r, ok := c.parse(body.TagName)
+	r, ok := parse(body.TagName)
 	if !ok {
 		return Release{}, fmt.Errorf("unexpected release tag %q", body.TagName)
 	}
