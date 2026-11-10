@@ -16,7 +16,8 @@ import (
 // host names, besides IP addresses and localhost, the dashboard may be
 // reached on (NODEDASH_HOSTS).
 func WithControl(c *control.Controller, hosts []string) Option {
-	return func(mux *http.ServeMux) {
+	return func(cfg *config) {
+		mux := cfg.mux
 		g := guard{hosts: map[string]bool{}}
 		for _, h := range hosts {
 			if h = strings.ToLower(strings.TrimSpace(h)); h != "" {

@@ -25,6 +25,8 @@ services:
 
     environment:
       NODEDASH_LISTEN: ":8080"
+      # Your name for the node, shown in the header, tab and home screen:
+      # NODEDASH_NAME: "Satoshi's node"
       # BITCOIN_RPC_URL: "http://127.0.0.1:8332"
       # Use RPC user/password instead of the cookie file:
       # BITCOIN_RPC_USER: "dashboard"

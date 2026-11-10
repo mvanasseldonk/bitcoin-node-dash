@@ -15,8 +15,23 @@ type SnapshotProvider interface {
 	Snapshot() model.Snapshot
 }
 
-// Option adds optional endpoints to the dashboard.
-type Option func(mux *http.ServeMux)
+// DefaultName is the dashboard's name when the operator gives none.
+const DefaultName = "Node"
+
+// config is what the options change.
+type config struct {
+	mux  *http.ServeMux
+	name string
+}
+
+// Option adds optional endpoints to the dashboard, or changes its settings.
+type Option func(c *config)
+
+// WithName sets the name the operator gave their node (NODEDASH_NAME, story
+// #35). It is shown in the header, the page title and on the home screen.
+func WithName(name string) Option {
+	return func(c *config) { c.name = name }
+}
 
 // New returns the HTTP handler for the dashboard.
 // static holds the built frontend (index.html and assets).
@@ -25,8 +40,9 @@ func New(snaps SnapshotProvider, static fs.FS, opts ...Option) http.Handler {
 	// Unknown API paths, and the control endpoints when control is off, are 404.
 	mux.HandleFunc("GET /api/", http.NotFound)
 	mux.HandleFunc("POST /api/", http.NotFound)
+	cfg := &config{mux: mux, name: DefaultName}
 	for _, opt := range opts {
-		opt(mux)
+		opt(cfg)
 	}
 
 	mux.HandleFunc("GET /api/status", func(w http.ResponseWriter, _ *http.Request) {
@@ -44,11 +60,25 @@ func New(snaps SnapshotProvider, static fs.FS, opts ...Option) http.Handler {
 		_, _ = w.Write([]byte("ok\n"))
 	})
 
-	if _, err := fs.Stat(static, "index.html"); err != nil {
+	mux.HandleFunc("GET /manifest.webmanifest", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/manifest+json")
+		_ = json.NewEncoder(w).Encode(newManifest(cfg.name))
+	})
+
+	index, err := fs.ReadFile(static, "index.html")
+	if err != nil {
 		mux.HandleFunc("GET /", func(w http.ResponseWriter, _ *http.Request) {
 			http.Error(w, "Frontend not built. Run `make web` (or use the Vite dev server) and restart.", http.StatusServiceUnavailable)
 		})
 	} else {
+		page := withName(index, cfg.name)
+		// The page itself carries the name; the file server would serve the
+		// file as built, and redirects /index.html here.
+		mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.Header().Set("Cache-Control", "no-cache")
+			_, _ = w.Write(page)
+		})
 		mux.Handle("GET /", http.FileServerFS(static))
 	}
 

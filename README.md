@@ -143,6 +143,7 @@ The password is never logged.
 | Variable               | Default                    | Description                                                                         |
 | ---------------------- | -------------------------- | ----------------------------------------------------------------------------------- |
 | `NODEDASH_LISTEN`      | `:8080`                    | Address the dashboard listens on                                                    |
+| `NODEDASH_NAME`        | `Node`                     | Your name for the node, at most 40 characters (see [Name and icon](#name-and-icon)) |
 | `BITCOIN_RPC_URL`      | `http://127.0.0.1:8332`    | Bitcoin Core JSON-RPC address                                                       |
 | `BITCOIN_DATADIR`      | `~/.bitcoin` (`/bitcoin` in Docker) | Bitcoin data directory; used for `bitcoin.conf`, the cookie file and to measure free disk space |
 | `BITCOIN_CONF`         | `$BITCOIN_DATADIR/bitcoin.conf` | Bitcoin Core config file to read `rpcuser`/`rpcpassword` from                 |
@@ -243,6 +244,20 @@ The **Details** link on each tile opens a page with the numbers behind it:
 These extra numbers are only fetched while the page is open, at most once every 4 seconds, however many people look.
 The page never shows addresses: not your node's, and not those of its peers.
 
+## Name and icon
+
+The browser tab shows your node's status: the favicon takes the colour of the status circle, and the title reads
+e.g. "Attention · Node". In a background tab you can see that the node needs attention.
+
+- **Your own name:** set `NODEDASH_NAME`, e.g. `NODEDASH_NAME="Satoshi's node"`. It shows in the header, the tab title
+  and under the icon on your phone's home screen.
+  - **Without Docker:** `sudo systemctl edit node-dash`, `Environment="NODEDASH_NAME=Satoshi's node"`.
+  - **With Docker:** under `environment:` in `docker-compose.yml`.
+
+  A name longer than 40 characters is refused at startup.
+- **On your phone:** "Add to Home Screen" gives the dashboard its own icon and name. The icon stays the same: a phone
+  doesn't let a web app change it, so the status shows in the app.
+
 ## Status rules
 
 The circle shows the most severe of these rules, with the reasons listed underneath:
@@ -294,6 +309,7 @@ make run CONTROL=1       # with node control on a simulated systemd
 make run MOCK=           # connect to Bitcoin Core instead (see Configuration)
 make test                # Go tests + frontend type check
 make lint                # gofmt + go vet
+go run ./tools/icons     # redraw the favicons and home screen icons in web/public
 ```
 
 For frontend work with hot reload, run the Go server and the Vite dev server side by side:
