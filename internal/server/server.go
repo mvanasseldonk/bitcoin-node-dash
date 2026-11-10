@@ -21,9 +21,10 @@ const DefaultName = "Node"
 
 // config is what the options change.
 type config struct {
-	mux      *http.ServeMux
-	name     string
-	noAncoro bool
+	mux       *http.ServeMux
+	name      string
+	noAncoro  bool
+	dashboard func() model.Dashboard
 }
 
 // Option adds optional endpoints to the dashboard, or changes its settings.
@@ -38,6 +39,12 @@ func WithName(name string) Option {
 // WithoutAncoro hides the link to Ancoro (NODEDASH_ANCORO=0, story #44).
 func WithoutAncoro() Option {
 	return func(c *config) { c.noAncoro = true }
+}
+
+// WithDashboard adds the dashboard's own version and latest release to every
+// status snapshot (story #39).
+func WithDashboard(info func() model.Dashboard) Option {
+	return func(c *config) { c.dashboard = info }
 }
 
 // New returns the HTTP handler for the dashboard.
@@ -57,6 +64,10 @@ func New(snaps SnapshotProvider, static fs.FS, opts ...Option) http.Handler {
 		w.Header().Set("Cache-Control", "no-store")
 		snap := snaps.Snapshot()
 		snap.ServerTime = time.Now()
+		if cfg.dashboard != nil {
+			d := cfg.dashboard()
+			snap.Dashboard = &d
+		}
 		_ = json.NewEncoder(w).Encode(snap)
 	})
 

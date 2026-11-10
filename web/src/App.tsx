@@ -7,6 +7,7 @@ import { DetailsPage, useRoute } from './details'
 import { AncoroLine, ANCORO, Mark, NAME, useBrand, type Tone } from './brand'
 import { useChangeKey } from './motion'
 import { ThemeSwitch } from './theme'
+import { UpdateLine } from './update'
 
 const REFRESH_MS = 10_000
 /** While a node action runs, follow its progress closely. */
@@ -226,6 +227,7 @@ export function App() {
               <Tiles data={snap.data} now={now} />
             </div>
           )}
+          {snap?.dashboard?.available && <UpdateLine dash={snap.dashboard} />}
           {ANCORO && <AncoroLine />}
         </main>
       )}

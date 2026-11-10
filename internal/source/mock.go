@@ -15,7 +15,8 @@ import (
 // "stale" answers once and then hangs, like a stuck poller: the dashboard
 // keeps serving the first snapshot while it grows older.
 // "outdated" runs a Bitcoin Core version that no longer gets security fixes;
-// in mock mode, the latest release is 32.1.
+// in mock mode, the latest release is 32.1, and a newer dashboard release
+// exists (story #39).
 // "live" is healthy, with a new block every 30 seconds, to see the dashboard
 // react to new data (story #41).
 var Scenarios = []string{"healthy", "syncing", "warning", "error", "unreachable", "starting", "stale", "outdated", "live"}

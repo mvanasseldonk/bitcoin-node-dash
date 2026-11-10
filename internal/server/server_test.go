@@ -35,6 +35,24 @@ func TestStatusEndpoint(t *testing.T) {
 	if d := time.Since(got.ServerTime); d < 0 || d > time.Minute {
 		t.Fatalf("serverTime = %v, want about now", got.ServerTime)
 	}
+	if got.Dashboard != nil {
+		t.Fatalf("dashboard = %+v, want none without WithDashboard", got.Dashboard)
+	}
+}
+
+func TestStatusCarriesDashboard(t *testing.T) {
+	want := model.Dashboard{Version: "v0.5.0", Check: model.CheckOn, Latest: "v0.6.0", Available: true, URL: "https://example.org"}
+	h := New(fixedSnapshot{}, fstest.MapFS{}, WithDashboard(func() model.Dashboard { return want }))
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/status", nil))
+	var got model.Snapshot
+	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Dashboard == nil || *got.Dashboard != want {
+		t.Fatalf("dashboard = %+v, want %+v", got.Dashboard, want)
+	}
 }
 
 func TestHealthz(t *testing.T) {

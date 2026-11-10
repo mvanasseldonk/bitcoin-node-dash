@@ -1,5 +1,6 @@
 // Package release looks up the latest Bitcoin Core release and turns it into
-// upgrade advice (story #24).
+// upgrade advice (story #24), and the latest release of the dashboard
+// itself (story #39).
 package release
 
 import (
@@ -46,13 +47,17 @@ func (r Release) String() string {
 }
 
 func (r Release) newerThan(s model.Software) bool {
-	if r.Major != s.Major {
-		return r.Major > s.Major
+	return r.newer(Release{s.Major, s.Minor, s.Patch})
+}
+
+func (r Release) newer(o Release) bool {
+	if r.Major != o.Major {
+		return r.Major > o.Major
 	}
-	if r.Minor != s.Minor {
-		return r.Minor > s.Minor
+	if r.Minor != o.Minor {
+		return r.Minor > o.Minor
 	}
-	return r.Patch > s.Patch
+	return r.Patch > o.Patch
 }
 
 // ParseTag parses a release tag such as "v32.1" or "v29.2.1". Release
@@ -105,6 +110,8 @@ func Advise(s model.Software, latest Latest) *model.Upgrade {
 // after a failure.
 type Checker struct {
 	url       string
+	what      string                           // whose releases, for the log
+	parse     func(tag string) (Release, bool) // which tags count
 	userAgent string
 	client    *http.Client
 	log       *slog.Logger
@@ -120,6 +127,8 @@ type Checker struct {
 func NewChecker(version string, log *slog.Logger) *Checker {
 	return &Checker{
 		url:       LatestURL,
+		what:      "Bitcoin Core",
+		parse:     ParseTag,
 		userAgent: "bitcoin-node-dash/" + version,
 		client:    &http.Client{Timeout: 15 * time.Second},
 		log:       log,
@@ -158,13 +167,13 @@ func (c *Checker) Check(ctx context.Context) error {
 	defer c.mu.Unlock()
 	if err != nil {
 		if err.Error() != c.lastErr && ctx.Err() == nil {
-			c.log.Warn("can't look up the latest Bitcoin Core release; retrying in an hour", "err", err)
+			c.log.Warn("can't look up the latest "+c.what+" release; retrying in an hour", "err", err)
 		}
 		c.lastErr = err.Error()
 		return err
 	}
 	if !c.known || r != c.latest {
-		c.log.Info("latest Bitcoin Core release", "version", r.String())
+		c.log.Info("latest "+c.what+" release", "version", r.String())
 	}
 	c.latest, c.known, c.lastErr = r, true, ""
 	return nil
@@ -196,7 +205,7 @@ func (c *Checker) fetch(ctx context.Context) (Release, error) {
 	if body.Prerelease || body.Draft {
 		return Release{}, errors.New("GitHub's latest release is a pre-release")
 	}
-	r, ok := ParseTag(body.TagName)
+	r, ok := c.parse(body.TagName)
 	if !ok {
 		return Release{}, fmt.Errorf("unexpected release tag %q", body.TagName)
 	}
