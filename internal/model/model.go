@@ -108,9 +108,40 @@ type Snapshot struct {
 // addresses of the node or its peers: the dashboard has no login.
 type Details struct {
 	// FetchedAt is when the numbers were read from the node.
-	FetchedAt  time.Time         `json:"fetchedAt"`
-	Blockchain BlockchainDetails `json:"blockchain"`
-	Network    NetworkDetails    `json:"network"`
+	FetchedAt time.Time `json:"fetchedAt"`
+	// Blockchain and Network are nil while the node can't be reached;
+	// NodeError then says why, in plain language.
+	Blockchain *BlockchainDetails `json:"blockchain"`
+	Network    *NetworkDetails    `json:"network"`
+	NodeError  string             `json:"nodeError"`
+	// Server is read from the operating system, also when the node is down.
+	Server ServerDetails `json:"server"`
+}
+
+// ServerDetails are the figures of the machine the dashboard runs on
+// (story #36). Zero or nil values are unknown; Missing says why.
+type ServerDetails struct {
+	// CPUPercent is the CPU usage since the previous reading (nil on the first).
+	CPUPercent    *float64 `json:"cpuPercent"`
+	MemUsedBytes  uint64   `json:"memUsedBytes"`
+	MemTotalBytes uint64   `json:"memTotalBytes"`
+	// Disk is the filesystem with the Bitcoin data directory.
+	DiskFreeBytes  uint64 `json:"diskFreeBytes"`
+	DiskUsedBytes  uint64 `json:"diskUsedBytes"`
+	DiskTotalBytes uint64 `json:"diskTotalBytes"`
+	// CPUTempC is the CPU temperature in °C, when the server exposes it.
+	CPUTempC  *float64 `json:"cpuTempC"`
+	UptimeSec int64    `json:"uptimeSec"`
+	// Missing maps a figure ("cpu", "memory", "disk", "temperature",
+	// "uptime") to the reason it is unknown, e.g. "only available on Linux".
+	Missing map[string]string `json:"missing"`
+	// CPU is the raw reading for CPUPercent.
+	CPU CPUSample `json:"-"`
+}
+
+// CPUSample is a reading of the CPU time counters (/proc/stat), in ticks.
+type CPUSample struct {
+	Total, Idle uint64
 }
 
 // BlockchainDetails adds to Blockchain.

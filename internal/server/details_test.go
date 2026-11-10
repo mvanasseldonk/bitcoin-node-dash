@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -11,15 +10,11 @@ import (
 	"testing/fstest"
 
 	"github.com/mvanasseldonk/bitcoin-node-dash/internal/model"
-	"github.com/mvanasseldonk/bitcoin-node-dash/internal/source"
 )
 
-type fakeDetails struct {
-	d   *model.Details
-	err error
-}
+type fakeDetails struct{ d *model.Details }
 
-func (f fakeDetails) Get(context.Context) (*model.Details, error) { return f.d, f.err }
+func (f fakeDetails) Get(context.Context) *model.Details { return f.d }
 
 func get(h http.Handler, method, path string) *httptest.ResponseRecorder {
 	rec := httptest.NewRecorder()
@@ -28,8 +23,8 @@ func get(h http.Handler, method, path string) *httptest.ResponseRecorder {
 }
 
 func TestDetailsEndpoint(t *testing.T) {
-	d := &model.Details{Blockchain: model.BlockchainDetails{UptimeSec: 42}}
-	h := New(fixedSnapshot{}, fstest.MapFS{}, WithDetails(fakeDetails{d: d}))
+	d := &model.Details{Blockchain: &model.BlockchainDetails{UptimeSec: 42}}
+	h := New(fixedSnapshot{}, fstest.MapFS{}, WithDetails(fakeDetails{d}))
 
 	rec := get(h, http.MethodGet, "/api/details")
 	if rec.Code != http.StatusOK {
@@ -44,23 +39,17 @@ func TestDetailsEndpoint(t *testing.T) {
 	}
 }
 
-func TestDetailsUnreachable(t *testing.T) {
-	for _, tc := range []struct {
-		err  error
-		want string
-	}{
-		{errors.New("dial tcp 127.0.0.1:8332: connection refused"), "can't reach bitcoin node"},
-		{&source.StartingError{Status: "Loading block index…"}, "starting: Loading block index…"},
-	} {
-		h := New(fixedSnapshot{}, fstest.MapFS{}, WithDetails(fakeDetails{err: tc.err}))
-		rec := get(h, http.MethodGet, "/api/details")
-		if rec.Code != http.StatusServiceUnavailable || !strings.Contains(rec.Body.String(), tc.want) {
-			t.Errorf("%v: got %d %s, want 503 with %q", tc.err, rec.Code, rec.Body, tc.want)
-		}
-		// Internal details such as addresses stay in the log.
-		if strings.Contains(rec.Body.String(), "127.0.0.1") {
-			t.Errorf("error leaks an address: %s", rec.Body)
-		}
+func TestDetailsNodeDown(t *testing.T) {
+	d := &model.Details{NodeError: "can't reach bitcoin node", Server: model.ServerDetails{MemTotalBytes: 16e9}}
+	h := New(fixedSnapshot{}, fstest.MapFS{}, WithDetails(fakeDetails{d}))
+	rec := get(h, http.MethodGet, "/api/details")
+	body := rec.Body.String()
+	if rec.Code != http.StatusOK || !strings.Contains(body, `"nodeError":"can't reach bitcoin node"`) || !strings.Contains(body, `"blockchain":null`) {
+		t.Fatalf("got %d %s", rec.Code, body)
+	}
+	// The raw CPU reading is internal.
+	if strings.Contains(body, "Idle") {
+		t.Fatalf("raw CPU reading in the JSON: %s", body)
 	}
 }
 

@@ -99,9 +99,26 @@ export interface NetworkType {
   peers: number
 }
 
+export interface ServerDetails {
+  /** Since the previous reading; null on the first. */
+  cpuPercent: number | null
+  memUsedBytes: number
+  memTotalBytes: number
+  diskFreeBytes: number
+  diskUsedBytes: number
+  diskTotalBytes: number
+  cpuTempC: number | null
+  uptimeSec: number
+  /** Figure ("cpu", "memory", "disk", "temperature", "uptime") → why it is unknown. */
+  missing: Record<string, string>
+}
+
 export interface Details {
   fetchedAt: string
-  blockchain: { uptimeSec: number; sizeOnDiskBytes: number; pruned: boolean }
+  /** Null while the node can't be reached; nodeError says why. */
+  nodeError: string
+  server: ServerDetails
+  blockchain: { uptimeSec: number; sizeOnDiskBytes: number; pruned: boolean } | null
   network: {
     networks: NetworkType[]
     totalSentBytes: number
@@ -109,10 +126,10 @@ export interface Details {
     /** Bytes per second; null until the second reading. */
     sendRate: number | null
     recvRate: number | null
-  }
+  } | null
 }
 
-/** Throws with the server's reason, e.g. "can't reach bitcoin node". */
+/** The node's part may be missing (nodeError); the server's is always there. */
 export async function fetchDetails(signal: AbortSignal): Promise<Details> {
   const res = await fetch('/api/details', {
     signal: AbortSignal.any([signal, AbortSignal.timeout(FETCH_TIMEOUT_MS)]),

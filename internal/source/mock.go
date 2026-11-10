@@ -114,11 +114,11 @@ func (m *Mock) FetchDetails(ctx context.Context) (*model.Details, error) {
 
 	d := &model.Details{
 		FetchedAt: now,
-		Blockchain: model.BlockchainDetails{
+		Blockchain: &model.BlockchainDetails{
 			UptimeSec:       int64((12*24+4)*3600 + elapsed),
 			SizeOnDiskBytes: 742 * gb,
 		},
-		Network: model.NetworkDetails{
+		Network: &model.NetworkDetails{
 			Networks: []model.NetworkType{
 				{Name: "ipv4", Enabled: true, Peers: 8},
 				{Name: "ipv6", Enabled: true, Peers: 2},
@@ -137,4 +137,26 @@ func (m *Mock) FetchDetails(ctx context.Context) (*model.Details, error) {
 		d.Network.Networks = []model.NetworkType{{Name: "ipv4", Enabled: true}, {Name: "ipv6", Enabled: true}, {Name: "onion"}, {Name: "i2p"}, {Name: "cjdns"}}
 	}
 	return d, nil
+}
+
+// ReadServer implements ServerReader: a small home server at about 7% CPU.
+func (m *Mock) ReadServer() model.ServerDetails {
+	m.startOnce.Do(func() { m.started = m.now() })
+	ticks := uint64(m.now().Sub(m.started).Seconds() * 400) // 4 cores, 100 ticks/s
+	temp := 47.0
+	d := model.ServerDetails{
+		MemUsedBytes:   5_800_000_000,
+		MemTotalBytes:  16_000_000_000,
+		DiskFreeBytes:  812 * gb,
+		DiskUsedBytes:  1188 * gb,
+		DiskTotalBytes: 2 * tb,
+		CPUTempC:       &temp,
+		UptimeSec:      int64((41*24+7)*3600 + m.now().Sub(m.started).Seconds()),
+		Missing:        map[string]string{},
+		CPU:            model.CPUSample{Total: 9_000_000 + ticks, Idle: 8_100_000 + ticks*93/100},
+	}
+	if m.scenario == "warning" {
+		d.DiskFreeBytes, d.DiskUsedBytes = 38*gb, 1962*gb
+	}
+	return d
 }

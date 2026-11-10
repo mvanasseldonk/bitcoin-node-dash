@@ -225,12 +225,20 @@ Run `docker exec node-dash /usr/local/bin/node-dash version` to see which versio
 
 ## Details page
 
-The **Details** link on the Blockchain and Network tiles opens a page with the numbers behind them:
+The **Details** link on each tile opens a page with the numbers behind it:
 
 - **Blockchain:** block and header height, verification progress, the node software, bitcoind uptime, and the size of
   the blockchain data.
 - **Network:** peers per network (IPv4, IPv6, Tor, I2P, CJDNS), data sent and received, and the current upload and
   download rate.
+- **Server:** CPU usage, memory, the disk with the blockchain data, CPU temperature and uptime. They come from Linux
+  (`/proc` and `/sys`), so they also show while Bitcoin Core is down.
+  - **In Docker:** the figures are the host's, because a container shares its kernel. The CPU temperature is often
+    missing in Docker.
+  - **In a virtual machine:** often no CPU temperature either.
+  - **On macOS:** only the disk.
+
+  A figure that isn't available shows "—", with the reason.
 
 These extra numbers are only fetched while the page is open, at most once every 4 seconds, however many people look.
 The page never shows addresses: not your node's, and not those of its peers.
