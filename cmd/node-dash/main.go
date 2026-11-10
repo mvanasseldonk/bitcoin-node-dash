@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/mvanasseldonk/bitcoin-node-dash/internal/control"
+	"github.com/mvanasseldonk/bitcoin-node-dash/internal/details"
 	"github.com/mvanasseldonk/bitcoin-node-dash/internal/model"
 	"github.com/mvanasseldonk/bitcoin-node-dash/internal/poller"
 	"github.com/mvanasseldonk/bitcoin-node-dash/internal/release"
@@ -112,6 +113,9 @@ func run(log *slog.Logger) error {
 	go p.Run(ctx)
 
 	var opts []server.Option
+	if ds, ok := src.(source.DetailSource); ok {
+		opts = append(opts, server.WithDetails(details.New(ds, log)))
+	}
 	if os.Getenv("NODEDASH_CONTROL") == "1" {
 		unit := envOr("BITCOIN_SERVICE", "bitcoind.service")
 		ready := func() bool {
