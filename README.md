@@ -150,7 +150,7 @@ The password is never logged.
 | `BITCOIN_RPC_COOKIE`   | `$BITCOIN_DATADIR/.cookie` | Cookie file for RPC authentication                                                  |
 | `BITCOIN_RPC_USER`     | _(empty)_                  | RPC user; when set, used instead of `bitcoin.conf` and the cookie file              |
 | `BITCOIN_RPC_PASSWORD` | _(empty)_                  | RPC password for `BITCOIN_RPC_USER`                                                 |
-| `NODEDASH_MOCK`        | _(empty)_                  | Run on mock data: `healthy`, `syncing`, `warning`, `error`, `unreachable`, `starting`, `stale` or `outdated` |
+| `NODEDASH_MOCK`        | _(empty)_                  | Run on mock data: `healthy`, `syncing`, `warning`, `error`, `unreachable`, `starting`, `stale`, `outdated` or `live` (a new block every 30 s) |
 | `NODEDASH_UPDATE_CHECK` | _(empty)_                 | `0` turns off the daily lookup of the latest Bitcoin Core release (see [Upgrade advice](#upgrade-advice)) |
 | `NODEDASH_CONTROL`     | _(empty)_                  | `1` turns on [node control](#node-control): stop, start and restart Bitcoin Core    |
 | `BITCOIN_SERVICE`      | `bitcoind.service`         | The systemd service of Bitcoin Core, for node control                               |
@@ -304,7 +304,7 @@ Requirements: Go 1.26+ and Node.js 26 (see `.nvmrc`; run `nvm use`).
 
 ```bash
 make run                 # build everything and run on mock data at http://localhost:8080
-make run MOCK=warning    # other scenarios: healthy, syncing, warning, error, unreachable, starting, stale, outdated
+make run MOCK=warning    # other scenarios: healthy, syncing, warning, error, unreachable, starting, stale, outdated, live
 make run CONTROL=1       # with node control on a simulated systemd
 make run MOCK=           # connect to Bitcoin Core instead (see Configuration)
 make test                # Go tests + frontend type check
