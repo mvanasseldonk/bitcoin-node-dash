@@ -155,6 +155,7 @@ The password is never logged.
 | `NODEDASH_CONTROL`     | _(empty)_                  | `1` turns on [node control](#node-control): stop, start and restart Bitcoin Core    |
 | `BITCOIN_SERVICE`      | `bitcoind.service`         | The systemd service of Bitcoin Core, for node control                               |
 | `NODEDASH_HOSTS`       | _(empty)_                  | Extra host names, comma separated, on which node control may be used (see below)    |
+| `NODEDASH_ANCORO`      | _(empty)_                  | `0` hides the link to Ancoro under the tiles (see [Checking a transaction](#checking-a-transaction)) |
 
 ## Node control
 
@@ -263,6 +264,15 @@ e.g. "Attention · Node". In a background tab you can see that the node needs at
 The dashboard follows your device's light or dark setting. To choose yourself, use the theme button at the top
 right: **System**, **Light** or **Dark**. The choice is kept in that browser only, so your phone and laptop each have
 their own.
+
+## Checking a transaction
+
+Under the tiles, a line links to [Ancoro](https://www.ancoro.site), where you can check whether a transaction went
+through. The dashboard itself never shows addresses or transactions.
+
+- **Nothing is loaded from Ancoro** until you click.
+- **The link doesn't tell Ancoro where your dashboard runs** (`noreferrer`).
+- **To hide it,** set `NODEDASH_ANCORO=0`.
 
 ## Status rules
 

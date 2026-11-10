@@ -4,7 +4,7 @@ import { ago, clockTime, isZeroTime, shortDuration } from './format'
 import { Tiles } from './tiles'
 import { ControlSheet, PowerButton, useControl } from './control'
 import { DetailsPage, useRoute } from './details'
-import { Mark, NAME, useBrand, type Tone } from './brand'
+import { AncoroLine, ANCORO, Mark, NAME, useBrand, type Tone } from './brand'
 import { useChangeKey } from './motion'
 import { ThemeSwitch } from './theme'
 
@@ -226,6 +226,7 @@ export function App() {
               <Tiles data={snap.data} now={now} />
             </div>
           )}
+          {ANCORO && <AncoroLine />}
         </main>
       )}
 

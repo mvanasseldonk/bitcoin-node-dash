@@ -120,6 +120,9 @@ func run(log *slog.Logger) error {
 	go p.Run(ctx)
 
 	opts := []server.Option{server.WithName(name)}
+	if os.Getenv("NODEDASH_ANCORO") == "0" {
+		opts = append(opts, server.WithoutAncoro())
+	}
 	if ds, ok := src.(source.DetailSource); ok {
 		var sys source.ServerReader
 		if r, ok := src.(source.ServerReader); ok {

@@ -6,6 +6,27 @@ import { useEffect } from 'preact/hooks'
 /** NODEDASH_NAME, put in the page by the server; "Node" by default. */
 export const NAME = document.querySelector<HTMLMetaElement>('meta[name="application-name"]')?.content || 'Node'
 
+/** Whether to show the link to Ancoro; NODEDASH_ANCORO=0 turns it off (story #44). */
+export const ANCORO = document.querySelector<HTMLMetaElement>('meta[name="nodedash-ancoro"]')?.content !== 'off'
+
+/**
+ * A quiet line under the tiles pointing to Ancoro, a transaction checker.
+ * noreferrer: Ancoro doesn't learn where the dashboard runs. Nothing is
+ * loaded from Ancoro until the link is clicked.
+ */
+export function AncoroLine() {
+  return (
+    <p class="ancoro">
+      Waiting for a payment?{' '}
+      <a href="https://www.ancoro.site" target="_blank" rel="noopener noreferrer">
+        Check it on Ancoro
+        <span aria-hidden="true"> ↗</span>
+        <span class="sr-only"> (opens in a new tab)</span>
+      </a>
+    </p>
+  )
+}
+
 /** The halo: a disc with a ring around it, in the current text colour. */
 export function Mark({ size = 20 }: { size?: number }) {
   return (

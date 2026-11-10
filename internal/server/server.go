@@ -2,6 +2,7 @@
 package server
 
 import (
+	"bytes"
 	"encoding/json"
 	"io/fs"
 	"net/http"
@@ -20,8 +21,9 @@ const DefaultName = "Node"
 
 // config is what the options change.
 type config struct {
-	mux  *http.ServeMux
-	name string
+	mux      *http.ServeMux
+	name     string
+	noAncoro bool
 }
 
 // Option adds optional endpoints to the dashboard, or changes its settings.
@@ -31,6 +33,11 @@ type Option func(c *config)
 // #35). It is shown in the header, the page title and on the home screen.
 func WithName(name string) Option {
 	return func(c *config) { c.name = name }
+}
+
+// WithoutAncoro hides the link to Ancoro (NODEDASH_ANCORO=0, story #44).
+func WithoutAncoro() Option {
+	return func(c *config) { c.noAncoro = true }
 }
 
 // New returns the HTTP handler for the dashboard.
@@ -72,6 +79,9 @@ func New(snaps SnapshotProvider, static fs.FS, opts ...Option) http.Handler {
 		})
 	} else {
 		page := withName(index, cfg.name)
+		if cfg.noAncoro {
+			page = bytes.Replace(page, []byte(ancoroOn), []byte(ancoroOff), 1)
+		}
 		// The page itself carries the name; the file server would serve the
 		// file as built, and redirects /index.html here.
 		mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, _ *http.Request) {
