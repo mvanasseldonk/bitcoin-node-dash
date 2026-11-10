@@ -287,9 +287,10 @@ verify_signature() {
 			fail "the signature of $VERSION doesn't check out; nothing was changed"
 		say "Signature checked with the installed node-dash"
 	elif command -v minisign >/dev/null 2>&1; then
-		out=$(minisign -V -P "$PUBKEY" -m "$TMP/checksums.txt" -x "$TMP/checksums.txt.minisig" 2>&1) &&
-			printf '%s\n' "$out" | grep -qx "Trusted comment: node-dash $VERSION" ||
+		if ! out=$(minisign -V -P "$PUBKEY" -m "$TMP/checksums.txt" -x "$TMP/checksums.txt.minisig" 2>&1) ||
+			! printf '%s\n' "$out" | grep -qx "Trusted comment: node-dash $VERSION"; then
 			fail "the signature of $VERSION doesn't check out; nothing was changed"
+		fi
 		say "Signature checked with minisign"
 	else
 		say "Note: checked against checksums.txt only. Install minisign to check the signature too;"
@@ -472,7 +473,9 @@ fi
 $SUDO systemctl daemon-reload
 configure_control
 configure_auto_update
-[ "$CONTROL_CHANGED" = no ] && [ "$AUTO_CHANGED" = no ] || $SUDO systemctl daemon-reload
+if [ "$CONTROL_CHANGED" = yes ] || [ "$AUTO_CHANGED" = yes ]; then
+	$SUDO systemctl daemon-reload
+fi
 $SUDO systemctl enable node-dash >/dev/null 2>&1
 $SUDO systemctl restart node-dash
 
