@@ -14,6 +14,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/mvanasseldonk/bitcoin-node-dash/internal/control"
 	"github.com/mvanasseldonk/bitcoin-node-dash/internal/details"
@@ -90,6 +92,11 @@ func run(log *slog.Logger) error {
 	listen := envOr("NODEDASH_LISTEN", ":8080")
 	log.Info("starting node-dash", "version", version)
 
+	name, err := appName(os.Getenv("NODEDASH_NAME"))
+	if err != nil {
+		return err
+	}
+
 	src, err := newSource(log)
 	if err != nil {
 		return err
@@ -112,7 +119,7 @@ func run(log *slog.Logger) error {
 	}
 	go p.Run(ctx)
 
-	var opts []server.Option
+	opts := []server.Option{server.WithName(name)}
 	if ds, ok := src.(source.DetailSource); ok {
 		var sys source.ServerReader
 		if r, ok := src.(source.ServerReader); ok {
@@ -201,6 +208,32 @@ func dataDir() string {
 		return filepath.Join(home, ".bitcoin")
 	}
 	return ""
+}
+
+// maxNameLen is the longest NODEDASH_NAME: enough for "Satoshi's node in
+// the meter cupboard", short enough for a header and a browser tab.
+const maxNameLen = 40
+
+// appName is the name the operator gave their node (NODEDASH_NAME), or
+// "Node". A name that can't be shown well is refused, so the dashboard
+// doesn't start with a broken header.
+func appName(v string) (string, error) {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return server.DefaultName, nil
+	}
+	if !utf8.ValidString(v) {
+		return "", errors.New("NODEDASH_NAME is not valid UTF-8")
+	}
+	if n := utf8.RuneCountInString(v); n > maxNameLen {
+		return "", fmt.Errorf("NODEDASH_NAME is %d characters long; at most %d fit", n, maxNameLen)
+	}
+	for _, r := range v {
+		if unicode.IsControl(r) {
+			return "", errors.New("NODEDASH_NAME contains a control character, such as a newline")
+		}
+	}
+	return v, nil
 }
 
 func envOr(key, def string) string {

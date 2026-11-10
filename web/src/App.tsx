@@ -4,6 +4,7 @@ import { ago, clockTime, isZeroTime, shortDuration } from './format'
 import { Tiles } from './tiles'
 import { ControlSheet, PowerButton, useControl } from './control'
 import { DetailsPage, useRoute } from './details'
+import { Mark, NAME, useBrand, type Tone } from './brand'
 
 const REFRESH_MS = 10_000
 /** While a node action runs, follow its progress closely. */
@@ -109,8 +110,9 @@ export function App() {
 
   const level: Level | 'loading' = serverDown ? 'unreachable' : (snap?.health.level ?? 'loading')
   // A running action or a stopped node (node control, #10) overrides the health level.
-  const tone = serverDown ? 'unreachable' : progress ? 'busy' : stopped ? 'stopped' : level
+  const tone: Tone = serverDown ? 'unreachable' : progress ? 'busy' : stopped ? 'stopped' : level
   const label = serverDown ? LABELS.unreachable : progress ? progress.steps[progress.current] : stopped ? 'Stopped' : level === 'loading' ? '' : LABELS[level]
+  useBrand(tone, label)
   // Reasons are listed for warnings and errors; unreachable gets a plain subline.
   const reasons = !progress && !stopped && (level === 'warning' || level === 'error') ? (snap?.health.reasons ?? []) : []
 
@@ -158,10 +160,14 @@ export function App() {
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M15 6l-6 6 6 6" />
             </svg>
-            <span class="wordmark">Node</span>
+            <Mark />
+            <span class="wordmark">{NAME}</span>
           </a>
         ) : (
-          <span class="wordmark">Node</span>
+          <span class="brand">
+            <Mark />
+            <span class="wordmark">{NAME}</span>
+          </span>
         )}
         <div class="header-end">
           {updated && (
