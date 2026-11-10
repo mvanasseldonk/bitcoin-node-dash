@@ -25,6 +25,7 @@ import (
 	"github.com/mvanasseldonk/bitcoin-node-dash/internal/poller"
 	"github.com/mvanasseldonk/bitcoin-node-dash/internal/release"
 	"github.com/mvanasseldonk/bitcoin-node-dash/internal/server"
+	"github.com/mvanasseldonk/bitcoin-node-dash/internal/settings"
 	"github.com/mvanasseldonk/bitcoin-node-dash/internal/source"
 	"github.com/mvanasseldonk/bitcoin-node-dash/internal/updater"
 	"github.com/mvanasseldonk/bitcoin-node-dash/web"
@@ -207,12 +208,14 @@ func run(log *slog.Logger) error {
 	}
 	if ds, ok := src.(source.DetailSource); ok {
 		var sys source.ServerReader
-		if r, ok := src.(source.ServerReader); ok {
-			sys = r // mock mode
+		var conf source.SettingsReader
+		if r, ok := src.(*source.Mock); ok {
+			sys, conf = r, r
 		} else {
 			sys = source.NewSystem(dataDir())
+			conf = settings.New(confPath(), dataDir())
 		}
-		opts = append(opts, server.WithDetails(details.New(ds, sys, log)))
+		opts = append(opts, server.WithDetails(details.New(ds, sys, conf, log)))
 	}
 	if ps, ok := src.(source.PeerSource); ok {
 		// Peer addresses only on request: the dashboard has no login (#12).
@@ -308,13 +311,18 @@ func newSource(log *slog.Logger) (source.Source, error) {
 		URL:        envOr("BITCOIN_RPC_URL", "http://127.0.0.1:8332"),
 		User:       os.Getenv("BITCOIN_RPC_USER"),
 		Password:   os.Getenv("BITCOIN_RPC_PASSWORD"),
-		ConfPath:   envOr("BITCOIN_CONF", filepath.Join(dataDir, "bitcoin.conf")),
+		ConfPath:   confPath(),
 		CookiePath: envOr("BITCOIN_RPC_COOKIE", filepath.Join(dataDir, ".cookie")),
 		DataDir:    dataDir,
 	}
 	rpc := source.NewRPC(cfg)
 	log.Info("using Bitcoin Core RPC", "url", cfg.URL, "auth", rpc.AuthSource(), "datadir", cfg.DataDir)
 	return rpc, nil
+}
+
+// confPath is bitcoin.conf: BITCOIN_CONF, or bitcoin.conf in the data directory.
+func confPath() string {
+	return envOr("BITCOIN_CONF", filepath.Join(dataDir(), "bitcoin.conf"))
 }
 
 // dataDir is the Bitcoin data directory: BITCOIN_DATADIR, or ~/.bitcoin.

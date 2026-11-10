@@ -49,7 +49,7 @@ func (f *fakeServer) ReadServer() model.ServerDetails {
 
 func newTest(src *fakeSource) (*Service, *time.Time) {
 	now := time.Date(2026, 11, 10, 9, 0, 0, 0, time.UTC)
-	s := New(src, &fakeServer{}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	s := New(src, &fakeServer{}, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	s.now = func() time.Time { return now }
 	return s, &now
 }

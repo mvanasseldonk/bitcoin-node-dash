@@ -198,6 +198,59 @@ type Details struct {
 	NodeError  string             `json:"nodeError"`
 	// Server is read from the operating system, also when the node is down.
 	Server ServerDetails `json:"server"`
+	// Settings are the node's main settings (story #13), from bitcoin.conf,
+	// its command line and the node; nil when they can't be read at all.
+	Settings *Settings `json:"settings"`
+	// Running are the settings the node reports over RPC, for Settings.
+	Running *RunningSettings `json:"-"`
+}
+
+// Sources of a setting's value (story #13).
+const (
+	FromDefault = "default" // Bitcoin Core's default
+	FromConf    = "conf"    // bitcoin.conf; SourceDetail is the section, e.g. "[main]"
+	FromInclude = "include" // a file named by includeconf; SourceDetail is its name
+	FromCmdline = "cmdline" // bitcoind's command line; SourceDetail is the flag
+	FromRunning = "running" // the node reports it; where it is set is unknown
+	FromUnknown = "unknown"
+)
+
+// Settings are the main settings of the node, read-only (story #13). Only
+// these settings leave the server: never other lines of bitcoin.conf.
+type Settings struct {
+	// Path is the bitcoin.conf that was read.
+	Path string `json:"path"`
+	// FileError says why bitcoin.conf couldn't be read, in plain language.
+	FileError string    `json:"fileError,omitempty"`
+	Items     []Setting `json:"items"`
+}
+
+// Setting is one setting and where its value comes from.
+type Setting struct {
+	Key string `json:"key"`
+	// Value is in the setting's unit: MiB for dbcache, prune and
+	// maxuploadtarget, MB for maxmempool, a count for maxconnections, 0 or 1
+	// for txindex, listen and blocksonly. For prune, 1 is manual pruning.
+	// Nil when unknown.
+	Value        *int64 `json:"value"`
+	Source       string `json:"source"`
+	SourceDetail string `json:"sourceDetail,omitempty"`
+	// ConfValue is what bitcoin.conf or the command line says, when the node
+	// runs with something else: it hasn't been restarted since.
+	ConfValue *int64 `json:"confValue,omitempty"`
+	// Invalid is a configured value that isn't a valid number.
+	Invalid string `json:"invalid,omitempty"`
+}
+
+// RunningSettings are the settings the node reports over RPC. Nil fields
+// are unknown.
+type RunningSettings struct {
+	Chain           string
+	Prune           *int64 // 0 off, 1 manual, else the target in MiB
+	TxIndex         *int64
+	MaxMempool      *int64 // MB
+	MaxUploadTarget *int64 // MiB, 0 unlimited
+	BlocksOnly      *int64
 }
 
 // ServerDetails are the figures of the machine the dashboard runs on

@@ -160,8 +160,31 @@ export interface ServerDetails {
   missing: Record<string, string>
 }
 
+/** Mirrors model.Setting (story #13). */
+export interface Setting {
+  key: string
+  /** In the setting's unit (MiB, MB, a count, 0/1); null when unknown. */
+  value: number | null
+  source: 'default' | 'conf' | 'include' | 'cmdline' | 'running' | 'unknown'
+  /** The section ("[main]"), the included file, or the command-line flag. */
+  sourceDetail?: string
+  /** What bitcoin.conf says when the node runs with something else. */
+  confValue?: number
+  /** A configured value that isn't a valid number. */
+  invalid?: string
+}
+
+export interface Settings {
+  /** The bitcoin.conf that was read. */
+  path: string
+  fileError?: string
+  items: Setting[]
+}
+
 export interface Details {
   fetchedAt: string
+  /** The node's main settings (story #13); null when they can't be read. */
+  settings: Settings | null
   /** Null while the node can't be reached; nodeError says why. */
   nodeError: string
   server: ServerDetails

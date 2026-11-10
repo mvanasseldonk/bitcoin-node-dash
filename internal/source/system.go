@@ -18,6 +18,12 @@ type ServerReader interface {
 	ReadServer() model.ServerDetails
 }
 
+// SettingsReader reads the node's main settings (story #13). running is
+// what the node reports, nil while it can't be reached.
+type SettingsReader interface {
+	ReadSettings(running *model.RunningSettings) *model.Settings
+}
+
 // System reads server figures from Linux's /proc and /sys (story #36).
 // Anything it can't read is reported in Missing, never as an error.
 type System struct {

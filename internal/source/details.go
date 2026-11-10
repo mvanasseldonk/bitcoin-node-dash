@@ -2,6 +2,7 @@ package source
 
 import (
 	"context"
+	"encoding/json"
 	"sort"
 	"time"
 
@@ -21,8 +22,10 @@ var networkOrder = []string{"ipv4", "ipv6", "onion", "i2p", "cjdns"}
 // network leaves this function: never addresses.
 func (r *RPC) FetchDetails(ctx context.Context) (*model.Details, error) {
 	var bc struct {
-		SizeOnDisk uint64 `json:"size_on_disk"`
-		Pruned     bool   `json:"pruned"`
+		Chain           string `json:"chain"`
+		SizeOnDisk      uint64 `json:"size_on_disk"`
+		Pruned          bool   `json:"pruned"`
+		PruneTargetSize *int64 `json:"prune_target_size"`
 	}
 	if err := r.call(ctx, "getblockchaininfo", &bc); err != nil {
 		return nil, err
@@ -36,6 +39,7 @@ func (r *RPC) FetchDetails(ctx context.Context) (*model.Details, error) {
 			Name      string `json:"name"`
 			Reachable bool   `json:"reachable"`
 		} `json:"networks"`
+		LocalRelay *bool `json:"localrelay"`
 	}
 	if err := r.call(ctx, "getnetworkinfo", &ni); err != nil {
 		return nil, err
@@ -44,6 +48,9 @@ func (r *RPC) FetchDetails(ctx context.Context) (*model.Details, error) {
 		TotalBytesRecv uint64 `json:"totalbytesrecv"`
 		TotalBytesSent uint64 `json:"totalbytessent"`
 		TimeMillis     int64  `json:"timemillis"`
+		UploadTarget   struct {
+			Target *int64 `json:"target"`
+		} `json:"uploadtarget"`
 	}
 	if err := r.call(ctx, "getnettotals", &totals); err != nil {
 		return nil, err
@@ -80,7 +87,48 @@ func (r *RPC) FetchDetails(ctx context.Context) (*model.Details, error) {
 	if totals.TimeMillis == 0 {
 		d.FetchedAt = time.Now().UTC()
 	}
+	d.Running = r.runningSettings(ctx, bc.Chain, bc.Pruned, bc.PruneTargetSize, ni.LocalRelay, totals.UploadTarget.Target)
 	return d, nil
+}
+
+const mib = 1 << 20
+
+// runningSettings collects the settings the node reports (story #13). A
+// call that fails leaves its setting unknown; it never fails the details.
+func (r *RPC) runningSettings(ctx context.Context, chain string, pruned bool, pruneTarget *int64, localRelay *bool, uploadTarget *int64) *model.RunningSettings {
+	val := func(v int64) *int64 { return &v }
+	rs := &model.RunningSettings{Chain: chain}
+	switch {
+	case !pruned:
+		rs.Prune = val(0)
+	case pruneTarget != nil && *pruneTarget > 0:
+		rs.Prune = val(*pruneTarget / mib)
+	default:
+		rs.Prune = val(1) // manual pruning (prune=1)
+	}
+	if localRelay != nil {
+		rs.BlocksOnly = val(0)
+		if !*localRelay {
+			rs.BlocksOnly = val(1)
+		}
+	}
+	if uploadTarget != nil {
+		rs.MaxUploadTarget = val(*uploadTarget / mib)
+	}
+	var idx map[string]json.RawMessage
+	if err := r.call(ctx, "getindexinfo", &idx); err == nil {
+		rs.TxIndex = val(0)
+		if _, ok := idx["txindex"]; ok {
+			rs.TxIndex = val(1)
+		}
+	}
+	var mp struct {
+		MaxMempool int64 `json:"maxmempool"`
+	}
+	if err := r.call(ctx, "getmempoolinfo", &mp); err == nil && mp.MaxMempool > 0 {
+		rs.MaxMempool = val(mp.MaxMempool / 1_000_000)
+	}
+	return rs
 }
 
 // networkTypes lists the known networks in a fixed order, plus any other
