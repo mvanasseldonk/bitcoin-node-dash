@@ -58,3 +58,22 @@ func TestMockStaleHangsAfterFirstFetch(t *testing.T) {
 	case <-time.After(50 * time.Millisecond):
 	}
 }
+
+func TestMockDetails(t *testing.T) {
+	for _, s := range Scenarios {
+		m, _ := NewMock(s)
+		ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+		d, err := m.FetchDetails(ctx)
+		cancel()
+		switch s {
+		case "unreachable", "starting", "stale":
+			if err == nil {
+				t.Errorf("%s: want an error", s)
+			}
+		default:
+			if err != nil || d.Blockchain.UptimeSec == 0 || len(d.Network.Networks) == 0 {
+				t.Errorf("%s: got %+v, %v", s, d, err)
+			}
+		}
+	}
+}

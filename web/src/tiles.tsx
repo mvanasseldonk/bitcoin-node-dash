@@ -77,10 +77,24 @@ export function serverTile(s: NodeData['server']): Single {
   return { big: free, line: 'free disk space', tone: 'neutral' }
 }
 
-function SingleTile({ title, tile }: { title: string; tile: Single }) {
+/** The tile's title, with a link to its section of the details page. */
+function TileHead({ title, details }: { title: string; details?: string }) {
+  return (
+    <div class="tile-head">
+      <h2 class="tile-title">{title}</h2>
+      {details && (
+        <a class="tile-link" href={`#/details/${details}`} aria-label={`${title} details`}>
+          Details
+        </a>
+      )}
+    </div>
+  )
+}
+
+function SingleTile({ title, tile, details }: { title: string; tile: Single; details?: string }) {
   return (
     <section class="tile">
-      <h2 class="tile-title">{title}</h2>
+      <TileHead title={title} details={details} />
       <span class={`tile-big tone-${tile.tone}`}>{tile.big}</span>
       <span class="tile-line">{tile.line}</span>
       {tile.extra && <span class={`tile-line small tile-extra tone-${tile.extra.tone}`}>{tile.extra.text}</span>}
@@ -110,7 +124,7 @@ function NetworkTile({ network }: { network: NodeData['network'] }) {
   const t = networkTile(network)
   return (
     <section class="tile">
-      <h2 class="tile-title">Network</h2>
+      <TileHead title="Network" details="network" />
       <div class="halves">
         <div class="half">
           <span class={`half-count tone-${t.out.tone}`}>
@@ -137,7 +151,7 @@ function NetworkTile({ network }: { network: NodeData['network'] }) {
 export function Tiles({ data, now }: { data: NodeData; now: number }) {
   return (
     <div class="tiles">
-      <SingleTile title="Blockchain" tile={{ ...blockchainTile(data.blockchain, now), extra: softwareLine(data) ?? undefined }} />
+      <SingleTile title="Blockchain" tile={{ ...blockchainTile(data.blockchain, now), extra: softwareLine(data) ?? undefined }} details="blockchain" />
       <NetworkTile network={data.network} />
       <SingleTile title="Server" tile={serverTile(data.server)} />
     </div>

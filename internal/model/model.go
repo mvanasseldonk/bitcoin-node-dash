@@ -102,3 +102,44 @@ type Snapshot struct {
 	// Browsers use it to measure data age without trusting their own clock.
 	ServerTime time.Time `json:"serverTime"`
 }
+
+// Details are the extra numbers for the details page (story #14). They are
+// only fetched while someone has that page open. They never include
+// addresses of the node or its peers: the dashboard has no login.
+type Details struct {
+	// FetchedAt is when the numbers were read from the node.
+	FetchedAt  time.Time         `json:"fetchedAt"`
+	Blockchain BlockchainDetails `json:"blockchain"`
+	Network    NetworkDetails    `json:"network"`
+}
+
+// BlockchainDetails adds to Blockchain.
+type BlockchainDetails struct {
+	// UptimeSec is how long bitcoind has been running.
+	UptimeSec int64 `json:"uptimeSec"`
+	// SizeOnDiskBytes is the size of the block and undo files.
+	SizeOnDiskBytes uint64 `json:"sizeOnDiskBytes"`
+	Pruned          bool   `json:"pruned"`
+}
+
+// NetworkDetails adds to Network.
+type NetworkDetails struct {
+	// Networks lists each network type and whether it is enabled.
+	Networks []NetworkType `json:"networks"`
+	// TotalSentBytes and TotalRecvBytes count since bitcoind started.
+	TotalSentBytes uint64 `json:"totalSentBytes"`
+	TotalRecvBytes uint64 `json:"totalRecvBytes"`
+	// SendRate and RecvRate are in bytes per second, nil while unknown
+	// (the first reading, or right after bitcoind restarted).
+	SendRate *float64 `json:"sendRate"`
+	RecvRate *float64 `json:"recvRate"`
+}
+
+// NetworkType is one kind of network: ipv4, ipv6, onion (Tor), i2p, cjdns.
+type NetworkType struct {
+	Name string `json:"name"`
+	// Enabled is getnetworkinfo's "reachable": the node may connect over it.
+	Enabled bool `json:"enabled"`
+	// Peers is the number of connected peers on this network.
+	Peers int `json:"peers"`
+}

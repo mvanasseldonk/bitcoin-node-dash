@@ -3,6 +3,7 @@ import { fetchStatus, type Level, type Snapshot } from './api'
 import { ago, clockTime, isZeroTime, shortDuration } from './format'
 import { Tiles } from './tiles'
 import { ControlSheet, PowerButton, useControl } from './control'
+import { DetailsPage, useRoute } from './details'
 
 const REFRESH_MS = 10_000
 /** While a node action runs, follow its progress closely. */
@@ -92,6 +93,7 @@ function useStatus(fast: boolean) {
 }
 
 export function App() {
+  const route = useRoute()
   const [sheetOpen, setSheetOpen] = useState(false)
   const [fast, setFast] = useState(false)
   const { snap, serverDown, serverNow: now, offset } = useStatus(fast)
@@ -151,7 +153,16 @@ export function App() {
   return (
     <div class="page">
       <header class="header">
-        <span class="wordmark">Node</span>
+        {route.page === 'details' ? (
+          <a class="back" href="#/">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M15 6l-6 6 6 6" />
+            </svg>
+            <span class="wordmark">Node</span>
+          </a>
+        ) : (
+          <span class="wordmark">Node</span>
+        )}
         <div class="header-end">
           {updated && (
             <span class="updated">
@@ -163,32 +174,38 @@ export function App() {
         </div>
       </header>
 
-      <main class="main">
-        <section class={`hero ${stale ? 'hero-stale' : ''}`} aria-live="polite">
-          <div class={`circle circle-${tone}`} role="img" aria-label={label ? `Node status: ${label}` : 'Loading node status'}>
-            <span class="circle-label">{label}</span>
-          </div>
-          {reasons.length > 0 ? (
-            <ul class="reasons">
-              {reasons.map((r) => (
-                <li key={r}>
-                  <span class={`dot dot-${level}`} aria-hidden="true" />
-                  {r}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            subline && <p class="subline">{subline}</p>
-          )}
-        </section>
+      {route.page === 'details' ? (
+        <main class="main">
+          <DetailsPage snap={snap} now={now} section={route.section} />
+        </main>
+      ) : (
+        <main class="main">
+          <section class={`hero ${stale ? 'hero-stale' : ''}`} aria-live="polite">
+            <div class={`circle circle-${tone}`} role="img" aria-label={label ? `Node status: ${label}` : 'Loading node status'}>
+              <span class="circle-label">{label}</span>
+            </div>
+            {reasons.length > 0 ? (
+              <ul class="reasons">
+                {reasons.map((r) => (
+                  <li key={r}>
+                    <span class={`dot dot-${level}`} aria-hidden="true" />
+                    {r}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              subline && <p class="subline">{subline}</p>
+            )}
+          </section>
 
-        {snap?.data && (
-          <div class={fresh ? '' : 'stale'}>
-            {!fresh && <p class="stale-caption">Last known values {'·'} {clockTime(Date.parse(snap.updatedAt) - offset)}</p>}
-            <Tiles data={snap.data} now={now} />
-          </div>
-        )}
-      </main>
+          {snap?.data && (
+            <div class={fresh ? '' : 'stale'}>
+              {!fresh && <p class="stale-caption">Last known values {'·'} {clockTime(Date.parse(snap.updatedAt) - offset)}</p>}
+              <Tiles data={snap.data} now={now} />
+            </div>
+          )}
+        </main>
+      )}
 
       {sheetOpen && control.enabled && (
         <ControlSheet

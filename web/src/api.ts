@@ -89,3 +89,36 @@ export async function postControl(action: Action): Promise<ControlState> {
   if (!res.ok) throw new Error(body.error || `The dashboard refused the action (${res.status})`)
   return body
 }
+
+// Details page (story #14). Mirrors model.Details.
+
+export interface NetworkType {
+  /** ipv4, ipv6, onion, i2p, cjdns, or another network with peers */
+  name: string
+  enabled: boolean
+  peers: number
+}
+
+export interface Details {
+  fetchedAt: string
+  blockchain: { uptimeSec: number; sizeOnDiskBytes: number; pruned: boolean }
+  network: {
+    networks: NetworkType[]
+    totalSentBytes: number
+    totalRecvBytes: number
+    /** Bytes per second; null until the second reading. */
+    sendRate: number | null
+    recvRate: number | null
+  }
+}
+
+/** Throws with the server's reason, e.g. "can't reach bitcoin node". */
+export async function fetchDetails(signal: AbortSignal): Promise<Details> {
+  const res = await fetch('/api/details', {
+    signal: AbortSignal.any([signal, AbortSignal.timeout(FETCH_TIMEOUT_MS)]),
+    cache: 'no-store',
+  })
+  const body = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(body.error || `details ${res.status}`)
+  return body
+}

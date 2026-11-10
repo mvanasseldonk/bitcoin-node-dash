@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/mvanasseldonk/bitcoin-node-dash/internal/model"
 )
 
 // fakeCore is a minimal Bitcoin Core JSON-RPC server for tests.
@@ -165,5 +167,52 @@ func TestRPCOnlyCheapCalls(t *testing.T) {
 	}
 	if got := strings.Join(methods, ","); got != "getblockchaininfo,getnetworkinfo" {
 		t.Fatalf("RPC calls per fetch = %s, want getblockchaininfo,getnetworkinfo", got)
+	}
+}
+
+func TestRPCFetchDetails(t *testing.T) {
+	results := map[string]string{
+		"getblockchaininfo": `{"chain":"main","size_on_disk":742000000000,"pruned":false}`,
+		"uptime":            `1054800`,
+		"getnetworkinfo": `{"networks":[{"name":"ipv4","reachable":true,"proxy":"10.0.0.5:9050"},{"name":"ipv6","reachable":true,"proxy":""},` +
+			`{"name":"onion","reachable":true,"proxy":"127.0.0.1:9050"},{"name":"i2p","reachable":false,"proxy":""},{"name":"cjdns","reachable":false,"proxy":""}],` +
+			`"localaddresses":[{"address":"203.0.113.7","port":8333,"score":4},{"address":"abcdefghijklmnop.onion","port":8333,"score":4}]}`,
+		"getnettotals": `{"totalbytesrecv":17900000000,"totalbytessent":48200000000,"timemillis":1794300000000}`,
+		"getpeerinfo": `[{"addr":"198.51.100.1:8333","network":"ipv4","inbound":false},{"addr":"198.51.100.2:8333","network":"ipv4","inbound":true},` +
+			`{"addr":"xyz.onion:8333","network":"onion","inbound":false},{"addr":"10.1.2.3:8333","network":"not_publicly_routable","inbound":true}]`,
+	}
+	srv := fakeCore(t, "alice", "pw", results)
+	defer srv.Close()
+
+	r := NewRPC(RPCConfig{URL: srv.URL, User: "alice", Password: "pw"})
+	d, err := r.FetchDetails(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Blockchain.UptimeSec != 1054800 || d.Blockchain.SizeOnDiskBytes != 742_000_000_000 || d.Blockchain.Pruned {
+		t.Errorf("blockchain details = %+v", d.Blockchain)
+	}
+	if d.Network.TotalSentBytes != 48_200_000_000 || d.Network.TotalRecvBytes != 17_900_000_000 || !d.FetchedAt.Equal(time.UnixMilli(1794300000000)) {
+		t.Errorf("totals = %+v at %v", d.Network, d.FetchedAt)
+	}
+	got := map[string]model.NetworkType{}
+	var names []string
+	for _, n := range d.Network.Networks {
+		got[n.Name] = n
+		names = append(names, n.Name)
+	}
+	if strings.Join(names, ",") != "ipv4,ipv6,onion,i2p,cjdns,not_publicly_routable" {
+		t.Errorf("networks in order: %v", names)
+	}
+	if got["ipv4"].Peers != 2 || got["onion"].Peers != 1 || !got["onion"].Enabled || got["i2p"].Enabled || got["not_publicly_routable"].Peers != 1 {
+		t.Errorf("networks = %+v", d.Network.Networks)
+	}
+
+	// Privacy: no address of the node, its peers or its proxy leaves the server.
+	b, _ := json.Marshal(d)
+	for _, secret := range []string{"203.0.113.7", "onion:", ".onion", "198.51.100", "10.1.2.3", "10.0.0.5", "9050"} {
+		if strings.Contains(string(b), secret) {
+			t.Errorf("details contain %q: %s", secret, b)
+		}
 	}
 }

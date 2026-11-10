@@ -32,3 +32,22 @@ export function formatBytes(bytes: number): string {
 export function clockTime(t: string | number): string {
   return new Date(t).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
 }
+
+/** "12 days 4 h", "3 h 12 min", "5 min", "40 s": for uptimes. */
+export function longDuration(sec: number): string {
+  const s = Math.max(0, Math.floor(sec))
+  const d = Math.floor(s / 86400)
+  const h = Math.floor((s % 86400) / 3600)
+  const m = Math.floor((s % 3600) / 60)
+  if (d > 0) return `${d} ${d === 1 ? 'day' : 'days'} ${h} h`
+  if (h > 0) return `${h} h ${m} min`
+  if (m > 0) return `${m} min`
+  return `${s} s`
+}
+
+/** Decimal units per second: "820 B/s", "45.2 kB/s", "1.3 MB/s". */
+export function formatRate(bytesPerSec: number): string {
+  if (bytesPerSec >= 1e6) return `${(bytesPerSec / 1e6).toFixed(1)} MB/s`
+  if (bytesPerSec >= 1e3) return `${(bytesPerSec / 1e3).toFixed(1)} kB/s`
+  return `${Math.round(bytesPerSec)} B/s`
+}

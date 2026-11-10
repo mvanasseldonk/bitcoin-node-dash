@@ -223,6 +223,18 @@ The dashboard shows **Unreachable** and its log (`docker logs node-dash`) tells 
 
 Run `docker exec node-dash /usr/local/bin/node-dash version` to see which version you're running.
 
+## Details page
+
+The **Details** link on the Blockchain and Network tiles opens a page with the numbers behind them:
+
+- **Blockchain:** block and header height, verification progress, the node software, bitcoind uptime, and the size of
+  the blockchain data.
+- **Network:** peers per network (IPv4, IPv6, Tor, I2P, CJDNS), data sent and received, and the current upload and
+  download rate.
+
+These extra numbers are only fetched while the page is open, at most once every 4 seconds, however many people look.
+The page never shows addresses: not your node's, and not those of its peers.
+
 ## Status rules
 
 The circle shows the most severe of these rules, with the reasons listed underneath:

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -31,6 +32,9 @@ type Mock struct {
 	scenario string
 	now      func() time.Time
 	fetched  atomic.Bool
+
+	startOnce sync.Once
+	started   time.Time
 }
 
 // NewMock returns a mock source for the given scenario.
@@ -88,6 +92,49 @@ func (m *Mock) Fetch(ctx context.Context) (*model.NodeData, error) {
 		d.Network = model.Network{Outbound: 0, Inbound: 0}
 	case "outdated":
 		d.Software = ParseSoftware(280100, "/Satoshi:28.1.0/")
+	}
+	return d, nil
+}
+
+// FetchDetails implements DetailSource with numbers that grow like a real
+// node's: about 120 kB/s up and 45 kB/s down.
+func (m *Mock) FetchDetails(ctx context.Context) (*model.Details, error) {
+	switch m.scenario {
+	case "unreachable":
+		return nil, ErrMockUnreachable
+	case "starting":
+		return nil, &StartingError{Status: "Loading block index…"}
+	case "stale":
+		<-ctx.Done() // a stuck node: the details request times out
+		return nil, ctx.Err()
+	}
+	now := m.now()
+	m.startOnce.Do(func() { m.started = now })
+	elapsed := now.Sub(m.started).Seconds()
+
+	d := &model.Details{
+		FetchedAt: now,
+		Blockchain: model.BlockchainDetails{
+			UptimeSec:       int64((12*24+4)*3600 + elapsed),
+			SizeOnDiskBytes: 742 * gb,
+		},
+		Network: model.NetworkDetails{
+			Networks: []model.NetworkType{
+				{Name: "ipv4", Enabled: true, Peers: 8},
+				{Name: "ipv6", Enabled: true, Peers: 2},
+				{Name: "onion", Enabled: true, Peers: 6},
+				{Name: "i2p"},
+				{Name: "cjdns"},
+			},
+			TotalSentBytes: uint64(48.2*gb + 120_000*elapsed),
+			TotalRecvBytes: uint64(17.9*gb + 45_000*elapsed),
+		},
+	}
+	switch m.scenario {
+	case "syncing":
+		d.Blockchain.SizeOnDiskBytes = 610 * gb
+	case "error":
+		d.Network.Networks = []model.NetworkType{{Name: "ipv4", Enabled: true}, {Name: "ipv6", Enabled: true}, {Name: "onion"}, {Name: "i2p"}, {Name: "cjdns"}}
 	}
 	return d, nil
 }
