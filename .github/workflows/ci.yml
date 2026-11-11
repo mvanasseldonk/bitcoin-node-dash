@@ -43,6 +43,8 @@ jobs:
   # data directory, and the dashboard restart it.
   install-script:
     runs-on: ubuntu-latest
+    # A question that waits for an answer must fail the job, not hang it.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
 

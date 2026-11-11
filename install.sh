@@ -877,10 +877,12 @@ ask_options() {
 	echo "Changing settings: change 8 settings of bitcoin.conf, such as dbcache, from the" >/dev/tty
 	echo "  dashboard. A backup is made first; anyone on your network can do it." >/dev/tty
 	conf=${SVC_CONF:-$SVC_DATADIR/bitcoin.conf}
-	if ! $SUDO test -f "$conf"; then
+	# sudo reads from the terminal while its command runs (use_pty), and
+	# would swallow answers typed ahead; these checks need no input.
+	if ! $SUDO test -f "$conf" </dev/null; then
 		echo "  Not possible yet: $conf doesn't exist. Create it (empty is fine)," >/dev/tty
 		echo "  then run this again with --settings." >/dev/tty
-	elif ! $SUDO runuser -u "$SVC_USER" -- test -w "$($SUDO readlink -f "$conf")"; then
+	elif ! $SUDO runuser -u "$SVC_USER" -- test -w "$($SUDO readlink -f "$conf" </dev/null)" </dev/null; then
 		echo "  Not possible here: node-dash runs as $SVC_USER, who can't write $conf (see the README)." >/dev/tty
 	else
 		ask_yes_no "  Turn it on?" NODEDASH_SETTINGS
