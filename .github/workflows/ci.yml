@@ -274,7 +274,8 @@ jobs:
           sudo systemctl restart node-dash
           wait_up
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/api/control)" = 404
-          sh install.sh --check | grep -q 'node control       off (turned off on the dashboard settings page)'
+          sh install.sh --check > check.txt
+          grep -q 'node control       off (turned off on the dashboard settings page)' check.txt
 
           # The installer turns it on again.
           NODEDASH_CONTROL=1 sh install.sh | tee out.txt
@@ -283,7 +284,9 @@ jobs:
           wait_up
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/api/control)" = 200
 
-          # Peer addresses: an installer option with a drop-in.
+          # Peer addresses: an installer option with a drop-in. Five restarts
+          # in a few seconds hit systemd's start limit; a person doesn't.
+          sudo systemctl reset-failed node-dash
           sh install.sh --peer-addresses | tee out.txt
           grep -qx 'Environment=NODEDASH_PEER_ADDRESSES=1' /etc/systemd/system/node-dash.service.d/peers.conf
           grep -q 'peer addresses     on' out.txt
