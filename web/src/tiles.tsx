@@ -101,14 +101,27 @@ export function mempoolTile(m: Mempool | null | undefined): Single {
   return { big: formatFee(fee.rate), unit: ' sat/vB', line: `Fee for ${FEE_LABELS[2]}`, tone: 'neutral', extra }
 }
 
-/** The tile's title, with a link to its section of the details page. */
+/** A muted chevron: the tile leads to more of the same (#64). */
+function Chevron() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M9 6l6 6-6 6" />
+    </svg>
+  )
+}
+
+/**
+ * The tile's title, with a link to its section of the details page. The
+ * link is the chevron, stretched over the whole tile (#64): one tab stop,
+ * read as "Server details", and the whole tile is the target.
+ */
 function TileHead({ title, details }: { title: string; details?: string }) {
   return (
     <div class="tile-head">
       <h2 class="tile-title">{title}</h2>
       {details && (
-        <a class="tile-link" href={`#/details/${details}`} aria-label={`${title} details`}>
-          Details
+        <a class="tile-open" href={`#/details/${details}`} aria-label={`${title} details`}>
+          <Chevron />
         </a>
       )}
     </div>
@@ -136,7 +149,7 @@ function BlockLine({ height, ago }: { height: number; ago: string }) {
 
 function SingleTile({ title, tile, details }: { title: string; tile: Single; details?: string }) {
   return (
-    <section class="tile">
+    <section class={details ? 'tile tile-linked' : 'tile'}>
       <TileHead title={title} details={details} />
       <span class={`tile-big tone-${tile.tone}`}>
         {tile.big}
@@ -169,7 +182,7 @@ function ArrowIn() {
 function NetworkTile({ network }: { network: NodeData['network'] }) {
   const t = networkTile(network)
   return (
-    <section class="tile">
+    <section class="tile tile-linked">
       <TileHead title="Network" details="network" />
       <div class="halves">
         <div class="half">

@@ -22,6 +22,7 @@
   --overlay: rgba(16, 19, 24, 0.4);
   --handle: #d5d8dd;
   --border: #dadde2;
+  --lift: 0 10px 24px -12px rgba(16, 19, 24, 0.22);
 
   --font-display: 'Fraunces', Georgia, serif;
   --font-sans: 'Instrument Sans', system-ui, sans-serif;
@@ -52,6 +53,7 @@
     --overlay: rgba(0, 0, 0, 0.6);
     --handle: #3a3f48;
     --border: #333842;
+    --lift: 0 10px 24px -12px rgba(0, 0, 0, 0.7);
     color-scheme: dark;
   }
 }
@@ -74,6 +76,7 @@
   --overlay: rgba(0, 0, 0, 0.6);
   --handle: #3a3f48;
   --border: #333842;
+  --lift: 0 10px 24px -12px rgba(0, 0, 0, 0.7);
   color-scheme: dark;
 }
 
@@ -332,6 +335,57 @@ body {
 }
 .tone-error {
   color: var(--error);
+}
+
+/* The whole tile opens its details (#64): the chevron is the link, and its
+   ::after covers the tile. Dimmed tiles stay links. */
+.tile-linked {
+  position: relative;
+  transition: box-shadow 160ms ease-out, translate 160ms ease-out;
+}
+.tile-linked .tile-head {
+  align-items: center;
+  min-height: 24px;
+}
+.tile-linked .tile-title {
+  margin: 0;
+}
+.tile-open {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin-right: -2px;
+  color: var(--muted);
+  outline: none;
+}
+.tile-open::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 24px;
+}
+.tile-open:focus-visible::after {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+.tile-linked:hover .tile-open,
+.tile-open:focus-visible {
+  color: var(--ink);
+}
+.tile-linked:hover {
+  box-shadow: var(--lift);
+  translate: 0 -2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tile-linked {
+    transition: none;
+  }
+  .tile-linked:hover {
+    translate: none;
+  }
 }
 
 /* Last known values while the node (or dashboard server) is unreachable */
