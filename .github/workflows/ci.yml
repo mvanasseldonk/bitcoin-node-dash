@@ -229,6 +229,69 @@ jobs:
           test ! -e /etc/systemd/system/node-dash.service.d/settings.conf
           sudo test -n "$(sudo ls /var/lib/node-dash-settings/backups)"
 
+      # The dashboard settings page (story #61, decision 0004): a switch
+      # turned off there stays off after a restart, until the installer
+      # turns it on again. Still this commit's build, with node control on.
+      - name: Dashboard settings page
+        run: |
+          set -eu
+          wait_up() {
+            for _ in $(seq 10); do curl -fsS -o /dev/null http://127.0.0.1:8080/healthz && return 0; sleep 1; done
+            return 1
+          }
+          # The unit was changed above, so the installer keeps it, and says
+          # what the page needs.
+          NODEDASH_CONTROL=1 sh install.sh | tee out.txt
+          grep -q 'StateDirectory=node-dash-web' out.txt
+          sudo mkdir -p /etc/systemd/system/node-dash.service.d
+          printf '%s\n' '[Service]' 'StateDirectory=node-dash-web' 'StateDirectoryMode=0700' |
+            sudo tee /etc/systemd/system/node-dash.service.d/web.conf
+          sudo systemctl daemon-reload
+          sudo install -m 0755 node-dash /usr/local/bin/node-dash
+          sudo systemctl restart node-dash
+          wait_up
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/api/control)" = 200
+          curl -fsS http://127.0.0.1:8080/api/dashboard | tee web.json; echo
+          grep -q '"canSave":true' web.json
+          version=$(python3 -c 'import json; print(json.load(open("web.json"))["version"])')
+
+          post() {
+            curl -s -o resp.json -w '%{http_code}' -X POST -H 'Content-Type: application/json' "$@" http://127.0.0.1:8080/api/dashboard
+          }
+          # Refused: another site, and turning a switch on.
+          test "$(post -H 'Origin: http://evil.example' -d "{\"version\":\"$version\",\"off\":[\"control\"]}")" = 403
+          test "$(post -d "{\"version\":\"$version\",\"on\":[\"control\"]}")" = 403
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/api/control)" = 200
+
+          # Turned off: at once, logged, and only for the dashboard's user.
+          test "$(post -H 'Origin: http://127.0.0.1:8080' -d "{\"version\":\"$version\",\"off\":[\"control\"]}")" = 200
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/api/control)" = 404
+          test "$(sudo stat -c '%U %a' /var/lib/node-dash-web)" = 'bitcoin 700'
+          test "$(sudo stat -c '%U %a' /var/lib/node-dash-web/off/control)" = 'bitcoin 600'
+          journalctl -u node-dash --no-pager | grep -q 'dashboard settings: Node control turned off'
+
+          # Still off after a restart of node-dash.
+          sudo systemctl restart node-dash
+          wait_up
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/api/control)" = 404
+          sh install.sh --check | grep -q 'node control       off (turned off on the dashboard settings page)'
+
+          # The installer turns it on again.
+          NODEDASH_CONTROL=1 sh install.sh | tee out.txt
+          grep -q 'Turned node control on again' out.txt
+          sudo test ! -e /var/lib/node-dash-web/off/control
+          wait_up
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/api/control)" = 200
+
+          # Peer addresses: an installer option with a drop-in.
+          sh install.sh --peer-addresses | tee out.txt
+          grep -qx 'Environment=NODEDASH_PEER_ADDRESSES=1' /etc/systemd/system/node-dash.service.d/peers.conf
+          grep -q 'peer addresses     on' out.txt
+          sh install.sh --no-peer-addresses
+          test ! -e /etc/systemd/system/node-dash.service.d/peers.conf
+          sudo rm /etc/systemd/system/node-dash.service.d/web.conf
+          sudo systemctl daemon-reload
+
       - name: Node control off again
         run: |
           NODEDASH_CONTROL=0 sh install.sh | tee out.txt
@@ -346,6 +409,7 @@ jobs:
           test ! -e /etc/systemd/system/node-dash-update.timer
           sudo test ! -e /etc/polkit-1/rules.d/50-node-dash.rules
           test ! -e /etc/systemd/system/node-dash.service.d
+          sudo test ! -e /var/lib/node-dash-web
           if systemctl is-active --quiet node-dash; then echo "service still running"; exit 1; fi
           test -d /home/bitcoin/.bitcoin
 
