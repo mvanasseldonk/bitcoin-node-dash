@@ -1,6 +1,6 @@
 # 4. How the dashboard changes its own settings
 
-- **Status:** proposed
+- **Status:** accepted. Verified on the first node, see [Findings](#findings-on-the-first-node-2026-11-11).
 - **Date:** 2026-11-11
 - **Issue:** #61
 
@@ -187,3 +187,13 @@ sudo systemd-run --pty --wait --uid=martijn -p StateDirectory=node-dash-test-a -
 ```
 
 It should print both directories, separated by `:`, and `a: writable`.
+
+### Findings on the first node (2026-11-11)
+
+The check came out as expected, so the decision holds.
+
+- **`$STATE_DIRECTORY`** was `/var/lib/node-dash-test-a:/var/lib/node-dash-test-b`: both directories, separated by
+  `:`, in the order of the `StateDirectory=` lines. That order isn't promised, so each entry is still picked by its
+  name (decision 1).
+- **Writable under `ProtectSystem=strict`:** the service, running as `martijn`, could create a file in its state
+  directory.
