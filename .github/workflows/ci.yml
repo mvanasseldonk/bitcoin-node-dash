@@ -43,6 +43,8 @@ jobs:
   # data directory, and the dashboard restart it.
   install-script:
     runs-on: ubuntu-latest
+    # A question that waits for an answer must fail the job, not hang it.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
 
@@ -57,7 +59,7 @@ jobs:
           # (/proc/<pid>/comm), like the real one.
           sudo cp "$(command -v perl)" /usr/local/bin/bitcoind
           printf '%s\n' '[Service]' 'User=bitcoin' 'Restart=always' \
-            'ExecStart=/usr/local/bin/bitcoind -e "sleep 3600" -- -datadir=/home/bitcoin/.bitcoin' |
+            'ExecStart=/usr/local/bin/bitcoind -e "sleep 3600" -- -datadir=/home/bitcoin/.bitcoin -rpcpassword=hunter2' |
             sudo tee /etc/systemd/system/bitcoind.service
           sudo systemctl daemon-reload
           sudo systemctl start bitcoind
@@ -239,6 +241,25 @@ jobs:
       # runner: this commit's build as v0.90.0 and v0.91.0, a v0.92.0 that
       # doesn't start, and a v0.93.0 signed with another key. The test
       # binaries carry a throwaway release key instead of the real one.
+      # --check (story #63): a report that is safe to paste in a chat. The
+      # fake bitcoind has rpcpassword on its command line, and bitcoin.conf
+      # has it too (from "Changing settings").
+      - name: The check shows no secrets
+        run: |
+          set -eu
+          sudo grep -q hunter2 /home/bitcoin/.bitcoin/bitcoin.conf
+          sh install.sh --check | tee check.txt
+          sudo sh install.sh --check | tee -a check.txt
+          if grep -q hunter2 check.txt; then echo "a secret in the check"; exit 1; fi
+          if grep -q 'rpcuser\|alice' check.txt; then echo "a line of bitcoin.conf in the check"; exit 1; fi
+          grep -q 'Safe to share' check.txt
+          grep -q 'Bitcoin Core:  running, service bitcoind.service is active' check.txt
+          grep -q 'user          bitcoin' check.txt
+          grep -q 'bitcoin.conf  /home/bitcoin/.bitcoin/bitcoin.conf, owner bitcoin, mode 600' check.txt
+          grep -q 'RPC           no answer on 127.0.0.1:8332 (chain: main)' check.txt
+          grep -q 'answers       yes, on port 8080' check.txt
+          grep -q 'node control       off' check.txt
+
       - name: Automatic updates
         run: |
           set -eu
@@ -327,3 +348,52 @@ jobs:
           test ! -e /etc/systemd/system/node-dash.service.d
           if systemctl is-active --quiet node-dash; then echo "service still running"; exit 1; fi
           test -d /home/bitcoin/.bitcoin
+
+      # The questions on a first install (story #63), in a terminal made by
+      # script(1), with the answers typed in: a name, node control yes,
+      # changing settings no, automatic updates no.
+      - name: Questions on a first install
+        run: |
+          set -eu
+          printf '%s\n' 'CI node' y n n | script -qec 'sh install.sh' /dev/null | tee out.txt
+          grep -q 'A few questions' out.txt
+          grep -q 'Node control is on' out.txt
+          grep -qx 'Environment="NODEDASH_NAME=CI node"' /etc/systemd/system/node-dash.service.d/name.conf
+          test -e /etc/systemd/system/node-dash.service.d/control.conf
+          test ! -e /etc/systemd/system/node-dash.service.d/settings.conf
+          test ! -e /etc/systemd/system/node-dash-update.timer
+          curl -fsS http://127.0.0.1:8080/manifest.webmanifest | python3 -c 'import json, sys; assert json.load(sys.stdin)["name"] == "CI node"'
+          grep -q 'node control       on' out.txt
+
+          # An update asks nothing.
+          script -qec 'sh install.sh' /dev/null </dev/null | tee out.txt
+          if grep -q 'A few questions' out.txt; then echo "asked on an update"; exit 1; fi
+
+      - name: Options as arguments
+        run: |
+          set -eu
+          name='Satoshi'"'"'s "node" 100% \ ok'
+          sh install.sh --name "$name" --no-control | tee out.txt
+          curl -fsS http://127.0.0.1:8080/manifest.webmanifest | python3 -c 'import json, sys; assert json.load(sys.stdin)["name"] == sys.argv[1], sys.argv[1]' "$name"
+          test ! -e /etc/systemd/system/node-dash.service.d/control.conf
+          grep -q 'node control       off' out.txt
+          grep -qF "name               $name" out.txt
+
+          # The same again changes nothing.
+          sh install.sh --name "$name" | tee out.txt
+          grep -q 'already installed and up to date' out.txt
+
+          # Back to the default name.
+          sh install.sh --name ""
+          test ! -e /etc/systemd/system/node-dash.service.d/name.conf
+          curl -fsS http://127.0.0.1:8080/manifest.webmanifest | python3 -c 'import json, sys; assert json.load(sys.stdin)["name"] == "Node"'
+
+          # Refused, with the reason, and nothing changed.
+          if sh install.sh --name "$(printf 'x%.0s' $(seq 41))" 2>err.txt; then exit 1; fi
+          grep -q 'at most 40 fit' err.txt
+          if sh install.sh --bogus 2>err.txt; then exit 1; fi
+          grep -q 'unknown option: --bogus' err.txt
+          sh install.sh --help | grep -q -- '--auto-update'
+
+          sh install.sh --uninstall
+          test ! -e /etc/systemd/system/node-dash.service.d
