@@ -28,5 +28,10 @@ ProtectHome=read-only
 PrivateTmp=true
 MemoryMax=128M
 
+# The dashboard's own settings, changed on its settings page (decision 0004):
+# /var/lib/node-dash-web, owned by the user above and only readable by it.
+StateDirectory=node-dash-web
+StateDirectoryMode=0700
+
 [Install]
 WantedBy=multi-user.target

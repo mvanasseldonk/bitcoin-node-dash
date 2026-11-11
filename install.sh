@@ -11,6 +11,7 @@
 #   --name "My node"     your name for the node, at most 40 characters (--name "" for the default)
 #   --control            let the dashboard stop, start and restart bitcoind (--no-control: off again)
 #   --settings           let the dashboard change bitcoin.conf, with backups (--no-settings: off again)
+#   --peer-addresses     show the addresses of your peers on the Peers page (--no-peer-addresses: off again)
 #   --auto-update        install new releases automatically, once a day (--no-auto-update: off again)
 #   --yes                ask nothing; keep the defaults for what isn't given
 #   --check              change nothing; print a report that is safe to share (no passwords or keys)
@@ -19,9 +20,10 @@
 # Environment variables, put before "sh": VERSION=v0.2.0 (a specific release),
 # NODEDASH_USER=bitcoin and BITCOIN_DATADIR=/path (when bitcoind can't be
 # found), BITCOIN_SERVICE=name (default: bitcoind.service), and the options as
-# NODEDASH_NAME="My node", NODEDASH_CONTROL=1, NODEDASH_SETTINGS=1 and
-# NODEDASH_AUTO_UPDATE=1 (0 turns one off). Read the README before turning on
-# node control or changing settings.
+# NODEDASH_NAME="My node", NODEDASH_CONTROL=1, NODEDASH_SETTINGS=1,
+# NODEDASH_PEER_ADDRESSES=1 and NODEDASH_AUTO_UPDATE=1 (0 turns one off). Read
+# the README before turning on node control or changing settings. Turning one
+# on also undoes "Turn off" on the dashboard settings page.
 
 set -eu
 
@@ -40,6 +42,11 @@ SETTINGS_DROPIN="/etc/systemd/system/node-dash.service.d/settings.conf"
 SETTINGS_STATE="/var/lib/node-dash-settings"
 # The name of the node: a drop-in with NODEDASH_NAME.
 NAME_DROPIN="/etc/systemd/system/node-dash.service.d/name.conf"
+# Peer addresses on the Peers page: a drop-in with NODEDASH_PEER_ADDRESSES.
+PEERS_DROPIN="/etc/systemd/system/node-dash.service.d/peers.conf"
+# The dashboard's own settings page (decision 0004): StateDirectory= in the
+# unit. A switch turned off there has a file in off/.
+WEB_STATE="/var/lib/node-dash-web"
 # Automatic updates: a root-owned timer runs "node-dash update" once a day.
 UPDATE_SERVICE="/etc/systemd/system/node-dash-update.service"
 UPDATE_TIMER="/etc/systemd/system/node-dash-update.timer"
@@ -68,6 +75,8 @@ while [ $# -gt 0 ]; do
 	--no-control) NODEDASH_CONTROL=0 ;;
 	--settings) NODEDASH_SETTINGS=1 ;;
 	--no-settings) NODEDASH_SETTINGS=0 ;;
+	--peer-addresses) NODEDASH_PEER_ADDRESSES=1 ;;
+	--no-peer-addresses) NODEDASH_PEER_ADDRESSES=0 ;;
 	--auto-update) NODEDASH_AUTO_UPDATE=1 ;;
 	--no-auto-update) NODEDASH_AUTO_UPDATE=0 ;;
 	--name=*) NODEDASH_NAME=${1#--name=} ;;
@@ -77,7 +86,7 @@ while [ $# -gt 0 ]; do
 		shift
 		;;
 	-h | --help)
-		sed -n '2,24p' "$0" 2>/dev/null | sed 's/^# \{0,1\}//' || true
+		sed -n '2,26p' "$0" 2>/dev/null | sed 's/^# \{0,1\}//' || true
 		exit 0
 		;;
 	*) fail "unknown option: $1 (see: sh install.sh --help)" ;;
@@ -85,7 +94,7 @@ while [ $# -gt 0 ]; do
 	shift
 done
 # Given options, as arguments or in the environment, mean no questions.
-if [ -n "${NODEDASH_CONTROL:-}${NODEDASH_SETTINGS:-}${NODEDASH_AUTO_UPDATE:-}" ] || [ -n "${NODEDASH_NAME+set}" ]; then
+if [ -n "${NODEDASH_CONTROL:-}${NODEDASH_SETTINGS:-}${NODEDASH_PEER_ADDRESSES:-}${NODEDASH_AUTO_UPDATE:-}" ] || [ -n "${NODEDASH_NAME+set}" ]; then
 	ASK=no
 fi
 
@@ -112,9 +121,9 @@ if [ "$ACTION" = uninstall ]; then
 	say "Stopping and removing the node-dash service (your Bitcoin data is not touched)"
 	$SUDO systemctl disable --now node-dash-update.timer >/dev/null 2>&1 || true
 	$SUDO systemctl disable --now node-dash >/dev/null 2>&1 || true
-	$SUDO rm -f "$UNIT" "$BIN" "$POLKIT_RULE" "$CONTROL_DROPIN" "$SETTINGS_DROPIN" "$NAME_DROPIN" "$UPDATE_SERVICE" "$UPDATE_TIMER"
+	$SUDO rm -f "$UNIT" "$BIN" "$POLKIT_RULE" "$CONTROL_DROPIN" "$SETTINGS_DROPIN" "$NAME_DROPIN" "$PEERS_DROPIN" "$UPDATE_SERVICE" "$UPDATE_TIMER"
 	$SUDO rmdir "${CONTROL_DROPIN%/*}" 2>/dev/null || true
-	$SUDO rm -rf "$STATE_DIR" "$UPDATE_STATE"
+	$SUDO rm -rf "$STATE_DIR" "$UPDATE_STATE" "$WEB_STATE"
 	$SUDO systemctl daemon-reload
 	if [ -d "$SETTINGS_STATE" ]; then
 		say "Kept the backups of bitcoin.conf in $SETTINGS_STATE; remove them yourself if you no longer need them"
@@ -391,6 +400,93 @@ DROPIN
 	fi
 }
 
+# --- Peer addresses -----------------------------------------------------------------
+
+# configure_peers writes or removes the drop-in that shows peer addresses,
+# per NODEDASH_PEER_ADDRESSES. It sets PEERS_CHANGED=yes when node-dash must
+# restart. Without NODEDASH_PEER_ADDRESSES it leaves things as they are.
+PEERS_CHANGED=no
+configure_peers() {
+	case "${NODEDASH_PEER_ADDRESSES:-}" in
+	"") return 0 ;;
+	0)
+		if [ -e "$PEERS_DROPIN" ]; then
+			say "Turning peer addresses off"
+			$SUDO rm -f "$PEERS_DROPIN"
+			$SUDO rmdir "${PEERS_DROPIN%/*}" 2>/dev/null || true
+			PEERS_CHANGED=yes
+		fi
+		return 0
+		;;
+	1) ;;
+	*) fail "NODEDASH_PEER_ADDRESSES must be 1 (on) or 0 (off), got '$NODEDASH_PEER_ADDRESSES'" ;;
+	esac
+	cat >"$TMP/peers.conf" <<'DROPIN'
+# Written by the bitcoin-node-dash installer (NODEDASH_PEER_ADDRESSES=1).
+# Shows the IP addresses of your peers on the Peers page, to anyone on your network.
+[Service]
+Environment=NODEDASH_PEER_ADDRESSES=1
+DROPIN
+	if ! cmp -s "$TMP/peers.conf" "$PEERS_DROPIN" 2>/dev/null; then
+		say "Peer addresses: shown on the Peers page"
+		$SUDO mkdir -p "${PEERS_DROPIN%/*}"
+		$SUDO install -m 0644 "$TMP/peers.conf" "$PEERS_DROPIN"
+		PEERS_CHANGED=yes
+	fi
+}
+
+# --- Dashboard settings page --------------------------------------------------------
+
+# turned_off_on_page succeeds when switch $1 (control, settings or
+# peer-addresses) was turned off on the dashboard settings page.
+turned_off_on_page() {
+	as_root test -e "$WEB_STATE/off/$1" 2>/dev/null || test -e "$WEB_STATE/off/$1" 2>/dev/null
+}
+
+# clear_turned_off undoes "Turn off" on the dashboard settings page for each
+# switch this run turns on (decision 0004). It only removes. It sets
+# CLEARED=yes when node-dash must restart.
+CLEARED=no
+clear_turned_off() {
+	for pair in "control:${NODEDASH_CONTROL:-}:node control" "settings:${NODEDASH_SETTINGS:-}:changing settings" \
+		"peer-addresses:${NODEDASH_PEER_ADDRESSES:-}:peer addresses"; do
+		sw=${pair%%:*}
+		rest=${pair#*:}
+		[ "${rest%%:*}" = 1 ] || continue
+		if $SUDO test -e "$WEB_STATE/off/$sw" </dev/null; then
+			$SUDO rm -f "$WEB_STATE/off/$sw"
+			say "Turned ${rest#*:} on again; it was turned off on the dashboard settings page"
+			CLEARED=yes
+		fi
+	done
+}
+
+# check_web_state says how to give a unit changed by hand the state directory
+# the dashboard settings page saves in. A unit the installer wrote gets it
+# from the release.
+check_web_state() {
+	[ -e "$UNIT" ] || return 0
+	if [ -e "$UNIT_HASH" ] && [ "$(sha256sum <"$UNIT" | cut -d' ' -f1)" = "$(cat "$UNIT_HASH")" ]; then
+		return 0
+	fi
+	if ! systemctl show -p StateDirectory --value node-dash | tr ' ' '\n' | grep -qx node-dash-web; then
+		say "The dashboard settings page can't save yet: $UNIT was changed by hand. Add these"
+		say "two lines under [Service] (sudo systemctl edit node-dash), then restart node-dash:"
+		say "  StateDirectory=node-dash-web"
+		say "  StateDirectoryMode=0700"
+	fi
+}
+
+# note_web_name says when a name set on the dashboard settings page hides the
+# one given here: a value set there wins over the environment.
+note_web_name() {
+	[ -n "${NODEDASH_NAME+set}" ] || return 0
+	if $SUDO grep -q '"name"' "$WEB_STATE/display.json" </dev/null 2>/dev/null; then
+		say "Note: the name set on the dashboard settings page wins over this one. To use this one,"
+		say "click \"Use that\" under Name on that page."
+	fi
+}
+
 # --- Automatic updates -----------------------------------------------------------
 
 # needs_updater fails when NODEDASH_AUTO_UPDATE=1 and binary $1 can't update
@@ -523,12 +619,23 @@ is_on() {
 	if [ -e "$1" ]; then echo on; else echo off; fi
 }
 
+# switch_state prints "on" or "off" for drop-in $1, and whether switch $2
+# was turned off on the dashboard settings page.
+switch_state() {
+	state=$(is_on "$1")
+	if [ "$state" = on ] && turned_off_on_page "$2"; then
+		state="off (turned off on the dashboard settings page)"
+	fi
+	printf '%s' "$state"
+}
+
 # options_report prints which options are on.
 options_report() {
 	name=$(current_name)
 	say "  name               ${name:-Node (the default)}"
-	say "  node control       $(is_on "$CONTROL_DROPIN")"
-	say "  changing settings  $(is_on "$SETTINGS_DROPIN")"
+	say "  node control       $(switch_state "$CONTROL_DROPIN" control)"
+	say "  changing settings  $(switch_state "$SETTINGS_DROPIN" settings)"
+	say "  peer addresses     $(switch_state "$PEERS_DROPIN" peer-addresses)"
 	say "  automatic updates  $(is_on "$UPDATE_TIMER")"
 }
 
@@ -538,7 +645,7 @@ summary() {
 	options_report
 	say "To change one, run the installer again with it, for example:"
 	say "  $INSTALL_CMD --control"
-	say "Others: --no-control, --settings, --auto-update, --name \"My node\" (all: --help)"
+	say "Others: --no-control, --settings, --peer-addresses, --auto-update, --name \"My node\" (all: --help)"
 }
 
 # as_root runs a command as root when that needs no password; else it fails.
@@ -648,6 +755,11 @@ run_check() {
 		state=$(systemctl is-active node-dash 2>/dev/null || true)
 		say "  service       $state, $(systemctl is-enabled node-dash 2>/dev/null || true) at boot; $how"
 		say "  runs as       $(systemctl show -p User --value node-dash)"
+		if systemctl show -p StateDirectory --value node-dash | tr ' ' '\n' | grep -qx node-dash-web; then
+			say "  settings page saves in $WEB_STATE"
+		else
+			say "  settings page can't save: the unit has no StateDirectory=node-dash-web"
+		fi
 		listen=$(systemctl show -p Environment --value node-dash | tr ' ' '\n' | sed -n 's/^NODEDASH_LISTEN=//p' | head -n 1)
 		port=${listen##*:}
 		port=${port:-8080}
@@ -730,14 +842,20 @@ if [ "$CURRENT" = "$VERSION" ] && [ -e "$UNIT" ]; then
 	configure_name
 	configure_control
 	configure_settings
+	configure_peers
 	configure_auto_update
-	if [ "$NAME_CHANGED" = no ] && [ "$CONTROL_CHANGED" = no ] && [ "$SETTINGS_CHANGED" = no ] && [ "$AUTO_CHANGED" = no ]; then
+	clear_turned_off
+	note_web_name
+	check_web_state
+	if [ "$NAME_CHANGED" = no ] && [ "$CONTROL_CHANGED" = no ] && [ "$SETTINGS_CHANGED" = no ] && [ "$PEERS_CHANGED" = no ] &&
+		[ "$AUTO_CHANGED" = no ] && [ "$CLEARED" = no ]; then
 		say "node-dash $VERSION is already installed and up to date; nothing to do"
 		summary
 		exit 0
 	fi
 	$SUDO systemctl daemon-reload
-	if [ "$NAME_CHANGED" = yes ] || [ "$CONTROL_CHANGED" = yes ] || [ "$SETTINGS_CHANGED" = yes ]; then
+	if [ "$NAME_CHANGED" = yes ] || [ "$CONTROL_CHANGED" = yes ] || [ "$SETTINGS_CHANGED" = yes ] || [ "$PEERS_CHANGED" = yes ] ||
+		[ "$CLEARED" = yes ]; then
 		$SUDO systemctl restart node-dash
 		wait_healthy
 		check_control
@@ -919,10 +1037,14 @@ $SUDO systemctl daemon-reload
 configure_name
 configure_control
 configure_settings
+configure_peers
 configure_auto_update
-if [ "$NAME_CHANGED" = yes ] || [ "$CONTROL_CHANGED" = yes ] || [ "$SETTINGS_CHANGED" = yes ] || [ "$AUTO_CHANGED" = yes ]; then
+if [ "$NAME_CHANGED" = yes ] || [ "$CONTROL_CHANGED" = yes ] || [ "$SETTINGS_CHANGED" = yes ] || [ "$PEERS_CHANGED" = yes ] || [ "$AUTO_CHANGED" = yes ]; then
 	$SUDO systemctl daemon-reload
 fi
+check_web_state
+clear_turned_off
+note_web_name
 $SUDO systemctl enable node-dash >/dev/null 2>&1
 $SUDO systemctl restart node-dash
 

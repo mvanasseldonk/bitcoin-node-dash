@@ -110,7 +110,7 @@ func (r *Reader) EnableEditing(stateDir, service string, log *slog.Logger) error
 }
 
 // Editable reports whether the settings form is on.
-func (r *Reader) Editable() bool { return r.edit != nil }
+func (r *Reader) Editable() bool { return r.edit != nil && (r.allowed == nil || r.allowed()) }
 
 // saved is the last save while bitcoind hasn't restarted since; nil after.
 // process is the running bitcoind: another one than during the save has

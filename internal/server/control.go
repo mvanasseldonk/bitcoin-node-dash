@@ -14,13 +14,18 @@ import (
 
 // WithControl adds the node control endpoints (story #10). hosts are extra
 // host names, besides IP addresses and localhost, the dashboard may be
-// reached on (NODEDASH_HOSTS).
-func WithControl(c *control.Controller, hosts []string) Option {
+// reached on (NODEDASH_HOSTS). on tells, per request, whether node control
+// is still on: turned off on the settings page, both answer 404 (#61).
+func WithControl(c *control.Controller, hosts []string, on func() bool) Option {
 	return func(cfg *config) {
 		mux := cfg.mux
 		g := newGuard(hosts)
 
 		mux.HandleFunc("GET /api/control", func(w http.ResponseWriter, r *http.Request) {
+			if !on() {
+				http.NotFound(w, r)
+				return
+			}
 			if err := g.checkHost(r); err != nil {
 				writeError(w, http.StatusForbidden, err)
 				return
@@ -29,6 +34,10 @@ func WithControl(c *control.Controller, hosts []string) Option {
 		})
 
 		mux.HandleFunc("POST /api/control", func(w http.ResponseWriter, r *http.Request) {
+			if !on() {
+				http.NotFound(w, r)
+				return
+			}
 			if status, err := g.checkPost(r); err != nil {
 				writeError(w, status, err)
 				return

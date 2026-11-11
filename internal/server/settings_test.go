@@ -43,7 +43,7 @@ func settingsHandler(t *testing.T) (http.Handler, string, *fixedDetails) {
 		t.Fatal(err)
 	}
 	det := &fixedDetails{}
-	return New(fixedSnapshot{}, fstest.MapFS{}, WithSettings(det, r, nil)), conf, det
+	return New(fixedSnapshot{}, fstest.MapFS{}, WithSettings(det, r, nil, func() bool { return true })), conf, det
 }
 
 func getForm(t *testing.T, h http.Handler) model.SettingsForm {

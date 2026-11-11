@@ -22,6 +22,11 @@ services:
       # Your Bitcoin data directory, read-only: used for the RPC cookie and
       # to measure free disk space.
       - ~/.bitcoin:/bitcoin:ro
+      # Lets the dashboard settings page save (the name, the Ancoro link,
+      # the update check, turning peer addresses off). Without it the page
+      # only shows the values. First, next to this file:
+      #   mkdir node-dash && sudo chown 1000:1000 node-dash   (the user above)
+      # - ./node-dash:/var/lib/node-dash-web
 
     environment:
       NODEDASH_LISTEN: ":8080"

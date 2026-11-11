@@ -3,20 +3,22 @@ package main
 import (
 	"strings"
 	"testing"
+
+	"github.com/mvanasseldonk/bitcoin-node-dash/internal/websettings"
 )
 
 func TestAppName(t *testing.T) {
 	for in, want := range map[string]string{
-		"":                              "Node",
-		"   ":                           "Node",
-		" Satoshi’s node ":              "Satoshi’s node",
-		strings.Repeat("ä", maxNameLen): strings.Repeat("ä", maxNameLen),
+		"":                 "Node",
+		"   ":              "Node",
+		" Satoshi’s node ": "Satoshi’s node",
+		strings.Repeat("ä", websettings.MaxNameLen): strings.Repeat("ä", websettings.MaxNameLen),
 	} {
 		if got, err := appName(in); err != nil || got != want {
 			t.Errorf("appName(%q) = %q, %v; want %q", in, got, err, want)
 		}
 	}
-	for _, in := range []string{strings.Repeat("x", maxNameLen+1), "two\nlines", "bad \xff"} {
+	for _, in := range []string{strings.Repeat("x", websettings.MaxNameLen+1), "two\nlines", "bad \xff"} {
 		if got, err := appName(in); err == nil {
 			t.Errorf("appName(%q) = %q, want an error", in, got)
 		}

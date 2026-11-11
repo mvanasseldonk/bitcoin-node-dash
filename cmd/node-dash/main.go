@@ -14,8 +14,6 @@ import (
 	"strings"
 	"syscall"
 	"time"
-	"unicode"
-	"unicode/utf8"
 
 	"github.com/mvanasseldonk/bitcoin-node-dash/internal/control"
 	"github.com/mvanasseldonk/bitcoin-node-dash/internal/details"
@@ -28,6 +26,7 @@ import (
 	"github.com/mvanasseldonk/bitcoin-node-dash/internal/settings"
 	"github.com/mvanasseldonk/bitcoin-node-dash/internal/source"
 	"github.com/mvanasseldonk/bitcoin-node-dash/internal/updater"
+	"github.com/mvanasseldonk/bitcoin-node-dash/internal/websettings"
 	"github.com/mvanasseldonk/bitcoin-node-dash/web"
 )
 
@@ -169,31 +168,46 @@ func run(log *slog.Logger) error {
 	} else {
 		p.UseServer(source.NewSystem(dataDir()))
 	}
+	// The Docker image sets NODEDASH_DOCKER=1: it is updated by pulling the image.
+	inDocker := os.Getenv("NODEDASH_DOCKER") == "1"
+	var hosts []string
+	if v := os.Getenv("NODEDASH_HOSTS"); v != "" {
+		hosts = strings.Split(v, ",")
+	}
+
+	// The dashboard's own settings: the environment, and what was changed on
+	// its settings page (story #61, decision 0004).
+	dashSettings, err := webSettings(name, hosts, inDocker, log)
+	if err != nil {
+		return err
+	}
+	updateCheck := dashSettings.UpdateCheck
+
 	// The dashboard's own version and latest release (story #39).
 	dashVersion := version
 	var dashLatest release.Latest // nil: no update check
-	switch {
-	case os.Getenv("NODEDASH_MOCK") != "":
+	if os.Getenv("NODEDASH_MOCK") != "" {
 		p.UseReleases(release.Fixed{Major: 32, Minor: 1})
 		dashVersion, dashLatest = mockDashboard(os.Getenv("NODEDASH_MOCK"), version)
-	case os.Getenv("NODEDASH_UPDATE_CHECK") == "0":
-		log.Info("update check off: no upgrade advice, no notice of new dashboard versions")
-	default:
-		// Once a day, ask GitHub for the latest Bitcoin Core release (story #24).
+	} else {
+		if !updateCheck() {
+			log.Info("update check off: no upgrade advice, no notice of new dashboard versions")
+		}
+		// Once a day, ask GitHub for the latest Bitcoin Core release (story
+		// #24), while the update check is on.
 		checker := release.NewChecker(version, log)
+		checker.Enabled = updateCheck
 		go checker.Run(ctx)
-		p.UseReleases(checker)
+		p.UseReleases(release.Gated{L: checker, On: updateCheck})
 		// And for the dashboard's own, unless this is a local build.
 		if _, ok := release.ParseVersion(version); ok {
 			own := release.NewDashboardChecker(version, log)
+			own.Enabled = updateCheck
 			go own.Run(ctx)
 			dashLatest = own
 		}
 	}
 	go p.Run(ctx)
-
-	// The Docker image sets NODEDASH_DOCKER=1: it is updated by pulling the image.
-	inDocker := os.Getenv("NODEDASH_DOCKER") == "1"
 	// The status of the automatic updates (story #50), written by the updater.
 	updateStatus := func() *model.AutoUpdate {
 		return updater.ReadStatus(filepath.Join(updater.DefaultStateDir, updater.StatusFile))
@@ -202,20 +216,24 @@ func run(log *slog.Logger) error {
 		updateStatus = func() *model.AutoUpdate { return mockAutoUpdate(scenario, dashVersion) }
 	}
 	opts := []server.Option{
-		server.WithName(name),
+		server.WithBrand(dashSettings.Name, dashSettings.Ancoro),
 		server.WithDashboard(func() model.Dashboard {
-			d := release.Dashboard(dashVersion, dashLatest, inDocker)
+			latest := dashLatest
+			if latest != nil && !updateCheck() {
+				latest = nil
+			}
+			d := release.Dashboard(dashVersion, latest, inDocker)
 			d.AutoUpdate = updateStatus()
 			return d
 		}),
 	}
-	if os.Getenv("NODEDASH_ANCORO") == "0" {
-		opts = append(opts, server.WithoutAncoro())
+	// On by default; NODEDASH_WEB_SETTINGS=0 turns the page off (#61).
+	if os.Getenv("NODEDASH_WEB_SETTINGS") != "0" {
+		opts = append(opts, server.WithWebSettings(dashSettings, hosts))
+	} else {
+		log.Info("dashboard settings page off (NODEDASH_WEB_SETTINGS=0)")
 	}
-	var hosts []string
-	if v := os.Getenv("NODEDASH_HOSTS"); v != "" {
-		hosts = strings.Split(v, ",")
-	}
+	switchOn := func(sw string) func() bool { return func() bool { return dashSettings.On(sw) } }
 	// Changing settings (story #55) is opt-in, and not for Docker, where
 	// bitcoin.conf is mounted read-only (decision 0003).
 	editSettings := os.Getenv("NODEDASH_SETTINGS") == "1"
@@ -248,11 +266,12 @@ func run(log *slog.Logger) error {
 		det := details.New(ds, sys, conf, log)
 		opts = append(opts, server.WithDetails(det))
 		if editor != nil {
+			editor.AllowWhile(switchOn(websettings.Settings))
 			service := envOr("BITCOIN_SERVICE", "bitcoind.service")
 			if err := editor.EnableEditing(stateDir, service, log); err != nil {
 				log.Error("can't turn on changing settings; they stay read-only", "err", err)
 			} else {
-				opts = append(opts, server.WithSettings(det, editor, hosts))
+				opts = append(opts, server.WithSettings(det, editor, hosts, switchOn(websettings.Settings)))
 				log.Info("changing settings enabled", "conf", editor.ConfPath, "backups", filepath.Join(stateDir, "backups"))
 			}
 		}
@@ -260,7 +279,7 @@ func run(log *slog.Logger) error {
 	if ps, ok := src.(source.PeerSource); ok {
 		// Peer addresses only on request: the dashboard has no login (#12).
 		addresses := os.Getenv("NODEDASH_PEER_ADDRESSES") == "1"
-		opts = append(opts, server.WithPeers(peers.New(ps, addresses, log)))
+		opts = append(opts, server.WithPeers(peers.New(ps, addresses, log).AddressesWhile(switchOn(websettings.PeerAddresses))))
 	}
 	if os.Getenv("NODEDASH_CONTROL") == "1" {
 		unit := envOr("BITCOIN_SERVICE", "bitcoind.service")
@@ -272,7 +291,7 @@ func run(log *slog.Logger) error {
 		if os.Getenv("NODEDASH_MOCK") != "" {
 			ctrl = control.NewWithRunner(unit, control.MockRunner(), ready, log)
 		}
-		opts = append(opts, server.WithControl(ctrl, hosts))
+		opts = append(opts, server.WithControl(ctrl, hosts, switchOn(websettings.Control)))
 		log.Info("node control enabled", "unit", unit)
 	}
 
@@ -358,12 +377,50 @@ func newSource(log *slog.Logger) (source.Source, error) {
 
 // settingsStateDir holds the backups of bitcoin.conf and the time of the
 // last save: StateDirectory= of the drop-in install.sh writes, which systemd
-// passes as STATE_DIRECTORY.
+// passes in STATE_DIRECTORY, among others (decision 0004).
 func settingsStateDir() string {
-	if d, _, _ := strings.Cut(os.Getenv("STATE_DIRECTORY"), ":"); d != "" {
-		return d
+	return websettings.Dir(os.Getenv("STATE_DIRECTORY"), "node-dash-settings", "/var/lib/node-dash-settings")
+}
+
+// webSettings reads the environment's dashboard settings and opens the
+// store of the settings page: StateDirectory=node-dash-web, or a temporary
+// directory in mock mode, so the page can be tried.
+func webSettings(name string, hosts []string, docker bool, log *slog.Logger) (*websettings.Store, error) {
+	env := websettings.Env{
+		Ancoro:      boolEnv("NODEDASH_ANCORO"),
+		UpdateCheck: boolEnv("NODEDASH_UPDATE_CHECK"),
+		On: map[string]bool{
+			websettings.Control:       os.Getenv("NODEDASH_CONTROL") == "1",
+			websettings.Settings:      os.Getenv("NODEDASH_SETTINGS") == "1",
+			websettings.PeerAddresses: os.Getenv("NODEDASH_PEER_ADDRESSES") == "1",
+		},
+		Listen: os.Getenv("NODEDASH_LISTEN"),
+		Hosts:  hosts,
+		Docker: docker,
 	}
-	return "/var/lib/node-dash-settings"
+	if name != server.DefaultName || strings.TrimSpace(os.Getenv("NODEDASH_NAME")) != "" {
+		env.Name = name
+	}
+	dir := websettings.Dir(os.Getenv("STATE_DIRECTORY"), "node-dash-web", websettings.DefaultDir)
+	if os.Getenv("NODEDASH_MOCK") != "" {
+		d, err := os.MkdirTemp("", "node-dash-mock-web-")
+		if err != nil {
+			return nil, err
+		}
+		dir = d
+	}
+	return websettings.New(dir, env, log), nil
+}
+
+// boolEnv is a 0/1 environment variable: nil when not set. Like before #61,
+// only "0" turns a setting off.
+func boolEnv(key string) *bool {
+	v, ok := os.LookupEnv(key)
+	if !ok || v == "" {
+		return nil
+	}
+	on := v != "0"
+	return &on
 }
 
 // mockSettings is a demo bitcoin.conf in a temporary directory, so the
@@ -403,10 +460,6 @@ func dataDir() string {
 	return ""
 }
 
-// maxNameLen is the longest NODEDASH_NAME: enough for "Satoshi's node in
-// the meter cupboard", short enough for a header and a browser tab.
-const maxNameLen = 40
-
 // appName is the name the operator gave their node (NODEDASH_NAME), or
 // "Node". A name that can't be shown well is refused, so the dashboard
 // doesn't start with a broken header.
@@ -415,16 +468,8 @@ func appName(v string) (string, error) {
 	if v == "" {
 		return server.DefaultName, nil
 	}
-	if !utf8.ValidString(v) {
-		return "", errors.New("NODEDASH_NAME is not valid UTF-8")
-	}
-	if n := utf8.RuneCountInString(v); n > maxNameLen {
-		return "", fmt.Errorf("NODEDASH_NAME is %d characters long; at most %d fit", n, maxNameLen)
-	}
-	for _, r := range v {
-		if unicode.IsControl(r) {
-			return "", errors.New("NODEDASH_NAME contains a control character, such as a newline")
-		}
+	if p := websettings.NameProblem(v); p != "" {
+		return "", errors.New("NODEDASH_NAME: " + p)
 	}
 	return v, nil
 }

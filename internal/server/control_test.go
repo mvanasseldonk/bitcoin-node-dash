@@ -28,7 +28,7 @@ func controlHandler(t *testing.T) (http.Handler, *fakeSystemctl) {
 	t.Helper()
 	f := &fakeSystemctl{}
 	c := control.NewWithRunner("bitcoind.service", f.run, func() bool { return true }, slog.New(slog.NewTextHandler(io.Discard, nil)))
-	return New(fixedSnapshot{}, fstest.MapFS{}, WithControl(c, []string{"bitcoin-node.lan"})), f
+	return New(fixedSnapshot{}, fstest.MapFS{}, WithControl(c, []string{"bitcoin-node.lan"}, func() bool { return true })), f
 }
 
 func post(h http.Handler, host, contentType, origin, body string) *httptest.ResponseRecorder {

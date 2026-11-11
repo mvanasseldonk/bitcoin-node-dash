@@ -79,7 +79,13 @@ type Reader struct {
 
 	// edit is nil while editing is off.
 	edit *editor
+	// allowed, when set, can turn the form off while running: from the
+	// dashboard settings page (story #61).
+	allowed func() bool
 }
+
+// AllowWhile turns the form off as soon as on says no.
+func (r *Reader) AllowWhile(on func() bool) { r.allowed = on }
 
 // New returns a Reader that finds bitcoind's command line in /proc.
 func New(confPath, dataDir string) *Reader {
@@ -221,7 +227,7 @@ func (r *Reader) ReadSettings(running *model.RunningSettings) *model.Settings {
 		}
 		out.Items = append(out.Items, item)
 	}
-	if r.edit != nil {
+	if r.edit != nil && (r.allowed == nil || r.allowed()) {
 		out.Editable = true
 		if saved := r.edit.saved(r.bitcoindStarted(running), r.bitcoindProcess()); saved != nil {
 			out.RestartNeeded = saved.RestartNeeded

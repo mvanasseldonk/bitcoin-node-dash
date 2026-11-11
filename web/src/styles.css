@@ -548,6 +548,7 @@ body {
   margin-right: -10px;
 }
 .power,
+.header-btn,
 .theme-btn {
   width: 44px;
   height: 44px;
@@ -560,12 +561,15 @@ body {
   cursor: pointer;
 }
 .power:hover,
+.header-btn:hover,
+.header-btn[aria-current='page'],
 .theme-btn:hover,
 .theme-btn[aria-expanded='true'] {
   color: var(--ink);
   background: var(--line);
 }
 .power:focus-visible,
+.header-btn:focus-visible,
 .theme-btn:focus-visible,
 .theme-option:focus-visible,
 .btn:focus-visible,
@@ -1016,7 +1020,8 @@ body {
   background: var(--line);
 }
 /* Without node control the theme button is the last one: align it like the power button. */
-.header-end > .theme:last-child {
+.header-end > .theme:last-child,
+.header-end > .header-btn:last-child {
   margin-right: -10px;
 }
 
@@ -1631,4 +1636,156 @@ body {
   .switch-knob {
     transition: none;
   }
+}
+
+/* Dashboard settings (#61) */
+.header-btn {
+  text-decoration: none;
+}
+/* Three header buttons on a phone: only the dot of "Updated …" stays. */
+@media (max-width: 480px) {
+  .updated-compact {
+    margin-right: 6px;
+  }
+  .updated-compact .updated-text {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+}
+.settings-intro a {
+  color: inherit;
+  text-decoration-color: var(--faint);
+  text-underline-offset: 3px;
+}
+.settings-card.tone-card-healthy {
+  border-left-color: var(--healthy);
+}
+.settings-card.tone-card-muted {
+  border-left-color: var(--faint);
+}
+.settings-count.tone-error {
+  color: var(--error);
+}
+.settings-command {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--bg);
+  font-size: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.web-group-intro {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.web-name {
+  width: 100%;
+  box-sizing: border-box;
+}
+.web-name input {
+  width: 100%;
+  text-align: left;
+}
+.web-name-note {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.web-name-note.tone-error {
+  color: var(--error);
+}
+.web-count {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+.web-use {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--faint);
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.web-use:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.web-switch-label,
+.web-fixed-label {
+  color: var(--ink);
+}
+.web-fixed-label {
+  color: var(--muted);
+}
+.web-switch-state {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: none;
+}
+.web-state {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+}
+.web-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--faint);
+}
+.web-dot-on {
+  background: var(--healthy);
+}
+.web-turn-off {
+  height: 40px;
+  padding: 0 16px;
+  border-radius: 999px;
+  font-size: 14px;
+}
+.settings-note code,
+.web-fixed-note code {
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 12px;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.web-fixed-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+}
+.web-fixed-value {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  text-align: right;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.web-fixed-note {
+  margin: 0;
+  padding: 14px 0;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
 }

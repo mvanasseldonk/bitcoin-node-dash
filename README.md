@@ -52,6 +52,7 @@ curl -fsSL https://raw.githubusercontent.com/mvanasseldonk/bitcoin-node-dash/mai
 | `--name "My node"` | Your name for the node, at most 40 characters. `--name ""` goes back to "Node" |
 | `--control`, `--no-control` | [Node control](#node-control) on or off |
 | `--settings`, `--no-settings` | [Changing settings](#changing-settings) on or off |
+| `--peer-addresses`, `--no-peer-addresses` | The addresses of your peers on the [Peers page](#peers-page) on or off |
 | `--auto-update`, `--no-auto-update` | [Automatic updates](#automatic-updates) on or off |
 | `--yes` | Ask nothing; what isn't given stays as it is |
 | `--check` | Change nothing; print a report to share when asking for help (see below) |
@@ -123,6 +124,7 @@ work in a container:
 | [Automatic updates](#automatic-updates) | ✓ | – (`docker compose pull`) |
 | Questions on the first install, `--check` | ✓ | – |
 | Your [own name](#name-and-icon) | `--name` | `NODEDASH_NAME` in `docker-compose.yml` |
+| [Dashboard settings](#dashboard-settings) page | ✓ | ✓ (saving needs a volume, see `docker-compose.yml`) |
 
 Run this on the machine where Bitcoin Core runs:
 
@@ -210,8 +212,34 @@ The password is never logged.
 | `NODEDASH_ANCORO`      | _(empty)_                  | `0` hides the link to Ancoro under the tiles (see [Checking a transaction](#checking-a-transaction)) |
 | `NODEDASH_PEER_ADDRESSES` | _(empty)_               | `1` shows the addresses of your peers on the Peers page (see [Peers page](#peers-page)) |
 | `NODEDASH_SETTINGS`    | _(empty)_                  | `1` turns on [changing settings](#changing-settings); set by the installer        |
+| `NODEDASH_WEB_SETTINGS` | _(empty)_                 | `0` turns off the [dashboard settings](#dashboard-settings) page and its button    |
 
 `NODEDASH_AUTO_UPDATE` is a setting of the installer, not of the dashboard: see [Automatic updates](#automatic-updates).
+
+## Dashboard settings
+
+The sliders button at the top right opens the dashboard's own settings. Bitcoin Core's settings are elsewhere:
+[Changing settings](#changing-settings).
+
+| | On the page | Why |
+|---|---|---|
+| Name, Ancoro link, update check | Change | Harmless: the worst a stranger can do is rename your node or hide a line |
+| Node control, changing settings, peer addresses | Only **turn off** | They let anyone on your network do more. Turning one on stays a step on the server |
+| `NODEDASH_LISTEN`, `NODEDASH_HOSTS` | Shown | A wrong address would make the dashboard unreachable, with no way back through the web |
+
+- **Where each value comes from:** the page says "Default", "Environment" or "Set here". A value set here wins over
+  the environment variable; **Use that** goes back to the environment's value.
+- **No restart:** the header, the tab title and the Ancoro line change at once; a switch turned off works at once.
+- **Kept in** `/var/lib/node-dash-web` (`StateDirectory=` in `node-dash.service`), readable only by the dashboard's
+  user. A switch turned off there stays off after a restart.
+- **Turning a switch on again:** run the installer with it, e.g. `sh -s -- --control`, or `--peer-addresses`. That
+  also undoes "Turn off". By hand: `sudo rm /var/lib/node-dash-web/off/control` and `sudo systemctl restart node-dash`.
+- **A unit you changed or wrote yourself:** the installer keeps it, so add `StateDirectory=node-dash-web` and
+  `StateDirectoryMode=0700` under `[Service]`. Until then, the page shows the values but can't save.
+- **Protection:** like [node control](#node-control): only JSON from the dashboard's own page. Every change is
+  logged (`journalctl -u node-dash`). `NODEDASH_WEB_SETTINGS=0` turns the page off.
+
+Why it works this way: [decision 0004](docs/decisions/0004-dashboard-settings.md).
 
 ## Node control
 
@@ -262,6 +290,8 @@ How it works and why: [decision 0001](docs/decisions/0001-controlling-bitcoind.m
   dashboard by a host name, such as `http://bitcoin-node.lan:8080`, add that name to `NODEDASH_HOSTS`
   (`sudo systemctl edit node-dash`, `Environment=NODEDASH_HOSTS=bitcoin-node.lan`).
 - **Not supported yet:** Bitcoin Core in Docker, and systems without polkit.
+- **Turning it off from the dashboard:** on the [dashboard settings](#dashboard-settings) page. `--control` turns it
+  on again.
 
 ## Troubleshooting
 
@@ -321,8 +351,10 @@ The page never shows addresses: not your node's, and not those of its peers.
 - **No status colours:** a slow peer shows by sorting on ping. Bitcoin Core doesn't say which peers misbehave.
 
 **Addresses are off by default.** The dashboard has no login, so anyone who can open it would see the IP and Tor
-addresses of your peers; for incoming peers, those are other people's. Set `NODEDASH_PEER_ADDRESSES=1` to show them,
-as a second line under each peer. Without it, they aren't in the API either. Your node's own address is never shown.
+addresses of your peers; for incoming peers, those are other people's. Turn them on with the installer
+(`sh -s -- --peer-addresses`), or set `NODEDASH_PEER_ADDRESSES=1`; they then show as a second line under each peer.
+Without it, they aren't in the API either. Your node's own address is never shown. The
+[dashboard settings](#dashboard-settings) page can turn them off again.
 
 ## Mempool and fees
 
@@ -429,8 +461,9 @@ e.g. "Attention · Node". In a background tab you can see that the node needs at
   and under the icon on your phone's home screen.
   - **Without Docker:** with the installer, `sh -s -- --name "Satoshi's node"` (see [Install](#install)).
   - **With Docker:** under `environment:` in `docker-compose.yml`.
+  - **In the dashboard:** on the [dashboard settings](#dashboard-settings) page, without a restart.
 
-  A name longer than 40 characters is refused at startup.
+  A name longer than 40 characters is refused.
 - **On your phone:** "Add to Home Screen" gives the dashboard its own icon and name. The icon stays the same: a phone
   doesn't let a web app change it, so the status shows in the app.
 
@@ -447,7 +480,7 @@ through. The dashboard itself never shows transactions, and peer addresses only 
 
 - **Nothing is loaded from Ancoro** until you click.
 - **The link doesn't tell Ancoro where your dashboard runs** (`noreferrer`).
-- **To hide it,** set `NODEDASH_ANCORO=0`.
+- **To hide it,** turn it off on the [dashboard settings](#dashboard-settings) page, or set `NODEDASH_ANCORO=0`.
 
 ## New dashboard versions
 

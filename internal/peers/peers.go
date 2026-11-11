@@ -25,8 +25,11 @@ type Service struct {
 	// addresses is NODEDASH_PEER_ADDRESSES=1. Without it, the addresses
 	// never leave this package: the dashboard has no login.
 	addresses bool
-	log       *slog.Logger
-	now       func() time.Time
+	// addressesOn, when set, can turn the addresses off while running: from
+	// the settings page (story #61).
+	addressesOn func() bool
+	log         *slog.Logger
+	now         func() time.Time
 
 	mu       sync.Mutex
 	cached   *model.Peers
@@ -37,6 +40,16 @@ type Service struct {
 // New returns a Service.
 func New(node source.PeerSource, addresses bool, log *slog.Logger) *Service {
 	return &Service{node: node, addresses: addresses, log: log, now: time.Now}
+}
+
+// AddressesWhile hides the addresses again as soon as on says no.
+func (s *Service) AddressesWhile(on func() bool) *Service {
+	s.addressesOn = on
+	return s
+}
+
+func (s *Service) showAddresses() bool {
+	return s.addresses && (s.addressesOn == nil || s.addressesOn())
 }
 
 // Get returns the peers, at most CacheTTL old. Concurrent callers wait for
@@ -51,7 +64,8 @@ func (s *Service) Get(ctx context.Context) *model.Peers {
 	// A visitor closing the page must not fail the reading for the others.
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), fetchTimeout)
 	defer cancel()
-	out := &model.Peers{FetchedAt: s.now(), Addresses: s.addresses}
+	addresses := s.showAddresses()
+	out := &model.Peers{FetchedAt: s.now(), Addresses: addresses}
 	list, err := s.node.FetchPeers(ctx)
 	if err != nil {
 		if err.Error() != s.lastErr {
@@ -61,7 +75,7 @@ func (s *Service) Get(ctx context.Context) *model.Peers {
 		out.NodeError = nodeError(err)
 	} else {
 		s.lastErr = ""
-		if !s.addresses {
+		if !addresses {
 			for i := range list {
 				list[i].Address = ""
 			}

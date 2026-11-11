@@ -62,6 +62,8 @@ export interface Snapshot {
   serverTime?: string
   /** The dashboard's own version and latest release (story #39). */
   dashboard?: Dashboard
+  /** Whether the dashboard settings page is on (story #61). */
+  webSettings?: boolean
 }
 
 /** Mirrors model.Dashboard. */
@@ -331,6 +333,78 @@ export async function saveSettings(hash: string, changes: Record<string, number>
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ hash, changes }),
+    signal: AbortSignal.timeout(15_000),
+  })
+  const body = await res.json().catch(() => ({}))
+  if (!res.ok) throw new SaveError(body.error || `The dashboard refused the save (${res.status})`, !!body.conflict, body.fields ?? {})
+  return body
+}
+
+// Dashboard settings (story #61). Mirrors model.WebSettings.
+
+export type WebSource = 'default' | 'environment' | 'web'
+
+export interface WebValue<T> {
+  value: T
+  source: WebSource
+  /** What applies when the value set here is dropped. */
+  fallback: T
+  fallbackSource: WebSource
+}
+
+export type SwitchKey = 'control' | 'settings' | 'peer-addresses'
+
+export interface WebSwitch {
+  key: SwitchKey
+  on: boolean
+  /** Whether the server turns it on. */
+  envOn: boolean
+  /** When it was turned off here. */
+  offSince: string | null
+  /** False for a switch the setup doesn't support, e.g. node control in Docker. */
+  available: boolean
+}
+
+export interface WebSettings {
+  /** Identifies the files as read; a save sends it back. */
+  version: string
+  canSave: boolean
+  cantSave?: string
+  warnings?: string[]
+  docker: boolean
+  name: WebValue<string>
+  ancoro: WebValue<boolean>
+  updateCheck: WebValue<boolean>
+  switches: WebSwitch[]
+  listen: { value: string; source: WebSource }
+  hosts: { value: string[]; source: WebSource }
+  /** What a save changed; only in the answer to a save. */
+  saved?: string[]
+}
+
+export interface WebChange {
+  set?: { name?: string; ancoro?: boolean; updateCheck?: boolean }
+  reset?: ('name' | 'ancoro' | 'updateCheck')[]
+  off?: SwitchKey[]
+}
+
+/** Returns null when the page is off (NODEDASH_WEB_SETTINGS=0: 404). */
+export async function fetchWebSettings(signal: AbortSignal): Promise<WebSettings | null> {
+  const res = await fetch('/api/dashboard', {
+    signal: AbortSignal.any([signal, AbortSignal.timeout(FETCH_TIMEOUT_MS)]),
+    cache: 'no-store',
+  })
+  if (res.status === 404) return null
+  const body = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(body.error || `dashboard settings ${res.status}`)
+  return body
+}
+
+export async function saveWebSettings(version: string, change: WebChange): Promise<WebSettings> {
+  const res = await fetch('/api/dashboard', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ version, ...change }),
     signal: AbortSignal.timeout(15_000),
   })
   const body = await res.json().catch(() => ({}))
