@@ -107,10 +107,22 @@ type FeeEstimate struct {
 	Missing string   `json:"missing,omitempty"`
 }
 
-// Server describes the resources of the host the node runs on.
+// Server describes the resources of the host the node runs on. The disk
+// comes from the source; the rest from the poller's ServerReader, for the
+// meters on the home page (story #65).
 type Server struct {
 	DiskFreeBytes  uint64 `json:"diskFreeBytes"`
 	DiskTotalBytes uint64 `json:"diskTotalBytes"`
+	// CPUPercent is the CPU usage since the previous poll, nil on the first.
+	CPUPercent    *float64 `json:"cpuPercent"`
+	MemUsedBytes  uint64   `json:"memUsedBytes"`
+	MemTotalBytes uint64   `json:"memTotalBytes"`
+	// CPUTempC is nil when the server doesn't expose a CPU sensor.
+	CPUTempC  *float64 `json:"cpuTempC"`
+	UptimeSec int64    `json:"uptimeSec"`
+	// Missing maps "cpu", "memory", "temperature" or "uptime" to the reason
+	// it is unknown, like ServerDetails.Missing.
+	Missing map[string]string `json:"missing,omitempty"`
 }
 
 // Health is the evaluated status of the node with human-readable reasons.
@@ -346,6 +358,17 @@ type ServerDetails struct {
 // CPUSample is a reading of the CPU time counters (/proc/stat), in ticks.
 type CPUSample struct {
 	Total, Idle uint64
+}
+
+// CPUBusy returns the CPU usage in percent between two readings, and false
+// when they can't be compared: no previous reading, or the counters went
+// back (a reboot).
+func CPUBusy(prev, cur CPUSample) (float64, bool) {
+	if prev.Total == 0 || cur.Total <= prev.Total || cur.Idle < prev.Idle {
+		return 0, false
+	}
+	busy := float64((cur.Total-prev.Total)-(cur.Idle-prev.Idle)) / float64(cur.Total-prev.Total) * 100
+	return min(max(busy, 0), 100), true
 }
 
 // BlockchainDetails adds to Blockchain.

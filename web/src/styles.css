@@ -388,6 +388,137 @@ body {
   }
 }
 
+/* Meters (#65): how it is now, without extra words. A 4 px bar with an
+   icon; the number in a label on hover or tap. Muted at rest; only the disk
+   and the connections take a colour. Each meter sits above the tile's
+   link (#64), so a tap on it shows its number instead of opening details. */
+.meters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 12px;
+  margin-top: 4px;
+}
+.meters.ruled {
+  margin-top: 6px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.meter {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 0;
+  /* Four meters and the uptime fit on one line at 375 px. */
+  min-width: 40px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  cursor: default;
+}
+.meter-icon {
+  flex: none;
+}
+.meter-track {
+  flex: 1;
+  min-width: 0;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--line);
+  overflow: hidden;
+}
+.meter-fill {
+  display: block;
+  height: 100%;
+  background: currentColor;
+  transform-origin: left;
+}
+.meter-warning {
+  color: var(--warning);
+}
+.meter-error {
+  color: var(--error);
+}
+/* Unknown: a dashed, empty track, never a bar at 0. */
+.meter-unknown .meter-track {
+  background: transparent;
+  border: 1px dashed var(--muted);
+}
+.meter-unknown .meter-icon {
+  color: var(--faint);
+}
+.meter-tip {
+  display: none;
+  position: absolute;
+  left: -6px;
+  bottom: 30px;
+  z-index: 2;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--ink);
+  color: var(--surface);
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  box-shadow: 0 6px 16px -8px rgba(16, 19, 24, 0.4);
+  pointer-events: none;
+}
+/* From the third meter on, the label opens to the left, so it stays on the tile. */
+.meter:nth-child(n + 3) .meter-tip {
+  left: auto;
+  right: -6px;
+}
+.meter:hover .meter-tip,
+.meter.open .meter-tip {
+  display: block;
+}
+.uptime {
+  flex: none;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+/* The outgoing connections as 10 slots. */
+.slots {
+  margin-top: 6px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  height: 24px;
+  box-sizing: content-box;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.slot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  border: 1.5px solid currentColor;
+}
+.slot.on {
+  background: currentColor;
+}
+.slots-muted {
+  color: var(--muted);
+}
+.slots-warning {
+  color: var(--warning);
+}
+.slots-error {
+  color: var(--error);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .meter-fill {
+    transition: transform 300ms ease-out;
+  }
+}
+
 /* Last known values while the node (or dashboard server) is unreachable */
 .stale .tiles,
 .hero-stale .circle {

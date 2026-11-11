@@ -1,5 +1,6 @@
 import type { Mempool, NodeData } from './api'
-import { ago, formatBytes, formatFee, formatVMB, isZeroTime, shortDuration } from './format'
+import { ago, formatBytes, formatFee, formatVMB, isZeroTime, longDuration, shortDuration } from './format'
+import { type MeterData, Meters, Slots, uptimeShort } from './meters'
 import { useChangeKey, useCountUp } from './motion'
 
 // Thresholds from stories #2–#4. Colour is only used when something needs attention.
@@ -25,6 +26,9 @@ interface Single {
   extra?: { text: string; tone: Tone }
   /** The line is about the latest block: it moves when a new one arrives (#41). */
   block?: { height: number; ago: string }
+  /** Meters at the bottom of the tile (#65). */
+  meters?: MeterData[]
+  uptime?: { short: string; label: string }
 }
 
 /** "Bitcoin Core 32.1 · 32.2 available", or null without software info. */
@@ -71,16 +75,64 @@ export function networkTile(n: NodeData['network']) {
   return { out: { count: n.outbound, ...out }, in: { count: n.inbound, ...inbound } }
 }
 
+const pct = (part: number, whole: number) => Math.min(100, Math.max(0, (part / whole) * 100))
+
+/** The server's meters (#65): CPU, memory, disk, and temperature when known. */
+export function serverMeters(s: NodeData['server']): MeterData[] {
+  const why = (key: string, fallback: string) => s.missing?.[key] ?? fallback
+  const meters: MeterData[] = [
+    s.cpuPercent != null
+      ? { kind: 'cpu', pct: s.cpuPercent, tone: 'muted', label: `CPU ${Math.round(s.cpuPercent)}%` }
+      : { kind: 'cpu', pct: null, tone: 'muted', label: `CPU · ${why('cpu', 'measuring…')}` },
+    s.memTotalBytes && s.memUsedBytes != null
+      ? {
+          kind: 'memory',
+          pct: pct(s.memUsedBytes, s.memTotalBytes),
+          tone: 'muted',
+          label: `Memory ${formatBytes(s.memUsedBytes)} of ${formatBytes(s.memTotalBytes)} · ${Math.round(pct(s.memUsedBytes, s.memTotalBytes))}%`,
+        }
+      : { kind: 'memory', pct: null, tone: 'muted', label: `Memory · ${why('memory', 'unknown')}` },
+  ]
+  if (s.diskTotalBytes) {
+    const full = pct(s.diskTotalBytes - s.diskFreeBytes, s.diskTotalBytes)
+    const tone = below(s.diskFreeBytes, s.diskTotalBytes, DISK_ERROR) ? 'error' : below(s.diskFreeBytes, s.diskTotalBytes, DISK_WARN) ? 'warning' : 'muted'
+    meters.push({ kind: 'disk', pct: full, tone, label: `Disk ${formatBytes(s.diskFreeBytes)} free of ${formatBytes(s.diskTotalBytes)} · ${Math.round(full)}% full` })
+  } else {
+    meters.push({ kind: 'disk', pct: null, tone: 'muted', label: 'Disk · unknown' })
+  }
+  // Left out, not empty, when the server has no sensor (decision 3).
+  if (s.cpuTempC != null) {
+    meters.push({ kind: 'temperature', pct: pct(s.cpuTempC, 100), tone: 'muted', label: `CPU temperature ${Math.round(s.cpuTempC)} °C` })
+  }
+  return meters
+}
+
 export function serverTile(s: NodeData['server']): Single {
+  // Older servers send only the disk: then no meters.
+  const extra =
+    s.memTotalBytes !== undefined
+      ? {
+          meters: serverMeters(s),
+          uptime: s.uptimeSec ? { short: uptimeShort(s.uptimeSec), label: `Server up ${longDuration(s.uptimeSec)}` } : undefined,
+        }
+      : {}
   if (!s.diskTotalBytes) {
-    return { big: '—', line: 'Disk usage unknown', tone: 'muted' }
+    return { big: '—', line: 'Disk usage unknown', tone: 'muted', ...extra }
   }
   const used = 1 - s.diskFreeBytes / s.diskTotalBytes
   const free = formatBytes(s.diskFreeBytes)
   const full = `free · disk ${Math.round(used * 100)}% full`
-  if (below(s.diskFreeBytes, s.diskTotalBytes, DISK_ERROR)) return { big: free, line: full, tone: 'error' }
-  if (below(s.diskFreeBytes, s.diskTotalBytes, DISK_WARN)) return { big: free, line: full, tone: 'warning' }
-  return { big: free, line: 'free disk space', tone: 'neutral' }
+  if (below(s.diskFreeBytes, s.diskTotalBytes, DISK_ERROR)) return { big: free, line: full, tone: 'error', ...extra }
+  if (below(s.diskFreeBytes, s.diskTotalBytes, DISK_WARN)) return { big: free, line: full, tone: 'warning', ...extra }
+  return { big: free, line: 'free disk space', tone: 'neutral', ...extra }
+}
+
+/** The mempool's memory of maxmempool (#65), or null without a mempool. */
+export function mempoolMeter(m: Mempool | null | undefined): MeterData | null {
+  if (!m || m.error || !m.maxBytes) return null
+  if (!m.loaded) return { kind: 'mempool', pct: null, tone: 'muted', label: 'Mempool memory · loading…' }
+  const p = pct(m.usageBytes, m.maxBytes)
+  return { kind: 'mempool', pct: p, tone: 'muted', label: `Mempool memory ${formatBytes(m.usageBytes)} of ${formatBytes(m.maxBytes)} · ${Math.round(p)}%` }
 }
 
 /** The fee targets and their labels (story #11). */
@@ -99,6 +151,12 @@ export function mempoolTile(m: Mempool | null | undefined): Single {
     return { big: '—', line: fee?.missing ?? 'Not enough data yet', tone: 'muted', extra }
   }
   return { big: formatFee(fee.rate), unit: ' sat/vB', line: `Fee for ${FEE_LABELS[2]}`, tone: 'neutral', extra }
+}
+
+/** The Mempool tile with its meter. */
+function mempoolWithMeter(m: Mempool | null | undefined): Single {
+  const meter = mempoolMeter(m)
+  return { ...mempoolTile(m), meters: meter ? [meter] : undefined }
 }
 
 /** A muted chevron: the tile leads to more of the same (#64). */
@@ -157,6 +215,7 @@ function SingleTile({ title, tile, details }: { title: string; tile: Single; det
       </span>
       {tile.block ? <BlockLine {...tile.block} /> : <span class="tile-line">{tile.line}</span>}
       {tile.extra && <span class={`tile-line small tile-extra tone-${tile.extra.tone}`}>{tile.extra.text}</span>}
+      {tile.meters && <Meters meters={tile.meters} uptime={tile.uptime} ruled={!tile.extra} />}
     </section>
   )
 }
@@ -203,6 +262,7 @@ function NetworkTile({ network }: { network: NodeData['network'] }) {
           <span class="tile-line small">{t.in.line}</span>
         </div>
       </div>
+      <Slots count={network.outbound} tone={t.out.tone === 'neutral' ? 'muted' : t.out.tone === 'error' ? 'error' : 'warning'} />
     </section>
   )
 }
@@ -213,7 +273,7 @@ export function Tiles({ data, now }: { data: NodeData; now: number }) {
       <SingleTile title="Blockchain" tile={{ ...blockchainTile(data.blockchain, now), extra: softwareLine(data) ?? undefined }} details="blockchain" />
       <NetworkTile network={data.network} />
       <SingleTile title="Server" tile={serverTile(data.server)} details="server" />
-      <SingleTile title="Mempool" tile={mempoolTile(data.mempool)} details="mempool" />
+      <SingleTile title="Mempool" tile={mempoolWithMeter(data.mempool)} details="mempool" />
     </div>
   )
 }

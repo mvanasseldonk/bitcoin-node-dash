@@ -163,6 +163,12 @@ func run(log *slog.Logger) error {
 	defer stop()
 
 	p := poller.New(src, pollInterval, fetchTimeout, log)
+	// The server's figures for the meters on the home page (#65).
+	if m, ok := src.(*source.Mock); ok {
+		p.UseServer(m)
+	} else {
+		p.UseServer(source.NewSystem(dataDir()))
+	}
 	// The dashboard's own version and latest release (story #39).
 	dashVersion := version
 	var dashLatest release.Latest // nil: no update check

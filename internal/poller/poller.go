@@ -43,6 +43,10 @@ type Poller struct {
 	failures int
 	// mempoolErr is the mempool problem that was logged last, or "".
 	mempoolErr string
+	// server reads CPU, memory, temperature and uptime for the home page
+	// (story #65); nil leaves them out. cpu is its previous CPU reading.
+	server source.ServerReader
+	cpu    model.CPUSample
 }
 
 // New returns a Poller. Call Run to start polling.
@@ -62,6 +66,12 @@ func New(src source.Source, interval, timeout time.Duration, log *slog.Logger) *
 // upgrade advice. Call it before Run.
 func (p *Poller) UseReleases(l release.Latest) {
 	p.releases = l
+}
+
+// UseServer sets where the server's figures come from: files under /proc
+// and /sys, no RPC. Call it before Run.
+func (p *Poller) UseServer(r source.ServerReader) {
+	p.server = r
 }
 
 // Run polls immediately and then every interval (longer while the node is
@@ -130,8 +140,37 @@ func (p *Poller) Poll(ctx context.Context) {
 	p.snap.Reachable = true
 	p.snap.UpdatedAt = now
 	data.Upgrade = release.Advise(data.Software, p.releases)
+	p.withServer(data)
 	p.snap.Data = data
 	p.snap.Health = health.Evaluate(data, now)
+}
+
+// withServer adds the server's figures to data. The disk stays the source's,
+// unless the source has none.
+func (p *Poller) withServer(data *model.NodeData) {
+	if p.server == nil {
+		return
+	}
+	d := p.server.ReadServer()
+	s := &data.Server
+	if s.DiskTotalBytes == 0 {
+		s.DiskFreeBytes, s.DiskTotalBytes = d.DiskFreeBytes, d.DiskTotalBytes
+	}
+	if busy, ok := model.CPUBusy(p.cpu, d.CPU); ok {
+		s.CPUPercent = &busy
+	}
+	p.cpu = d.CPU
+	s.MemUsedBytes, s.MemTotalBytes = d.MemUsedBytes, d.MemTotalBytes
+	s.CPUTempC = d.CPUTempC
+	s.UptimeSec = d.UptimeSec
+	for _, k := range []string{"cpu", "memory", "temperature", "uptime"} {
+		if why, ok := d.Missing[k]; ok {
+			if s.Missing == nil {
+				s.Missing = map[string]string{}
+			}
+			s.Missing[k] = why
+		}
+	}
 }
 
 // logMempool logs a mempool problem once, and when it is solved. The
