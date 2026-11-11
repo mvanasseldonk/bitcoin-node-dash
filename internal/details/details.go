@@ -119,11 +119,7 @@ func withCPU(cur, prev *model.Details) {
 	if prev == nil {
 		return
 	}
-	c, p := cur.Server.CPU, prev.Server.CPU
-	if c.Total <= p.Total || c.Idle < p.Idle || p.Total == 0 {
-		return
+	if busy, ok := model.CPUBusy(prev.Server.CPU, cur.Server.CPU); ok {
+		cur.Server.CPUPercent = &busy
 	}
-	busy := float64((c.Total-p.Total)-(c.Idle-p.Idle)) / float64(c.Total-p.Total) * 100
-	busy = min(max(busy, 0), 100)
-	cur.Server.CPUPercent = &busy
 }

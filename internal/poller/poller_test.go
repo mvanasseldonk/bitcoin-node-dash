@@ -238,3 +238,63 @@ func TestMempoolProblemKeepsHealth(t *testing.T) {
 		t.Fatalf("logged the mempool problem %d times, want once:\n%s", n, logs.String())
 	}
 }
+
+// fakeServer returns its readings one by one.
+type fakeServer struct{ readings []model.ServerDetails }
+
+func (f *fakeServer) ReadServer() model.ServerDetails {
+	d := f.readings[0]
+	if len(f.readings) > 1 {
+		f.readings = f.readings[1:]
+	}
+	return d
+}
+
+// The meters of story #65: the server's figures come with every poll, CPU
+// usage from the second poll on.
+func TestServerFigures(t *testing.T) {
+	temp := 48.0
+	srv := &fakeServer{readings: []model.ServerDetails{
+		{CPU: model.CPUSample{Total: 1000, Idle: 900}, MemUsedBytes: 3, MemTotalBytes: 8, CPUTempC: &temp, UptimeSec: 60, DiskFreeBytes: 1, DiskTotalBytes: 2},
+		{CPU: model.CPUSample{Total: 1400, Idle: 1200}, MemUsedBytes: 4, MemTotalBytes: 8, UptimeSec: 70, DiskFreeBytes: 1, DiskTotalBytes: 2,
+			Missing: map[string]string{"temperature": "no sensor", "disk": "ignored"}},
+	}}
+	src := &fakeSource{}
+	p := newTestPoller(src)
+	p.UseServer(srv)
+
+	src.data = &model.NodeData{Server: model.Server{DiskFreeBytes: 5, DiskTotalBytes: 10}}
+	p.Poll(context.Background())
+	s := p.Snapshot().Data.Server
+	if s.CPUPercent != nil {
+		t.Fatalf("CPU usage on the first poll: %v", *s.CPUPercent)
+	}
+	if s.MemUsedBytes != 3 || s.MemTotalBytes != 8 || s.CPUTempC == nil || *s.CPUTempC != 48 || s.UptimeSec != 60 {
+		t.Fatalf("unexpected figures: %+v", s)
+	}
+	if s.DiskFreeBytes != 5 || s.DiskTotalBytes != 10 {
+		t.Fatalf("the source's disk was replaced: %+v", s)
+	}
+
+	src.data = &model.NodeData{}
+	p.Poll(context.Background())
+	s = p.Snapshot().Data.Server
+	if s.CPUPercent == nil || *s.CPUPercent != 25 {
+		t.Fatalf("want 25%% CPU (100 busy of 400 ticks), got %v", s.CPUPercent)
+	}
+	if s.CPUTempC != nil || s.Missing["temperature"] != "no sensor" || s.Missing["disk"] != "" {
+		t.Fatalf("unexpected missing figures: %+v", s)
+	}
+	if s.DiskTotalBytes != 2 {
+		t.Fatalf("without a disk from the source, want the server's: %+v", s)
+	}
+}
+
+// Without a ServerReader, the snapshot has only the source's disk.
+func TestNoServerReader(t *testing.T) {
+	p := newTestPoller(&fakeSource{data: &model.NodeData{Server: model.Server{DiskTotalBytes: 10}}})
+	p.Poll(context.Background())
+	if s := p.Snapshot().Data.Server; s.MemTotalBytes != 0 || s.Missing != nil || s.CPUPercent != nil {
+		t.Fatalf("unexpected figures: %+v", s)
+	}
+}

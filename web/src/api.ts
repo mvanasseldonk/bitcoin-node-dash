@@ -18,6 +18,14 @@ export interface NodeData {
   server: {
     diskFreeBytes: number
     diskTotalBytes: number
+    /** The meters of #65; absent from servers before them. */
+    cpuPercent?: number | null
+    memUsedBytes?: number
+    memTotalBytes?: number
+    cpuTempC?: number | null
+    uptimeSec?: number
+    /** Why a figure is unknown, by "cpu", "memory", "temperature", "uptime". */
+    missing?: Record<string, string>
   }
   /** The node software, e.g. label "Bitcoin Core 32.1" (story #24). */
   software?: { name: string; version: string; label: string }
