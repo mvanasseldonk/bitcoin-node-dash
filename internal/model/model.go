@@ -149,6 +149,8 @@ type Snapshot struct {
 	// Dashboard is about the dashboard itself: its version and whether a
 	// newer release exists (story #39). Set when the snapshot is served.
 	Dashboard *Dashboard `json:"dashboard,omitempty"`
+	// WebSettings is true when the dashboard settings page is on (#61).
+	WebSettings bool `json:"webSettings,omitempty"`
 }
 
 // Whether the dashboard looks up its own latest release.

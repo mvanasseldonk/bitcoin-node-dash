@@ -24,12 +24,16 @@ type invalidator interface {
 
 // WithSettings adds the settings form (story #55): GET and POST
 // /api/settings, with the protections of node control (decision 0003).
-// Without it, both are 404. hosts are as for WithControl (NODEDASH_HOSTS).
-func WithSettings(det DetailsProvider, ed SettingsEditor, hosts []string) Option {
+// Without it, both are 404. hosts and on are as for WithControl.
+func WithSettings(det DetailsProvider, ed SettingsEditor, hosts []string, on func() bool) Option {
 	return func(cfg *config) {
 		g := newGuard(hosts)
 
 		cfg.mux.HandleFunc("GET /api/settings", func(w http.ResponseWriter, r *http.Request) {
+			if !on() {
+				http.NotFound(w, r)
+				return
+			}
 			if err := g.checkHost(r); err != nil {
 				writeError(w, http.StatusForbidden, err)
 				return
@@ -38,6 +42,10 @@ func WithSettings(det DetailsProvider, ed SettingsEditor, hosts []string) Option
 		})
 
 		cfg.mux.HandleFunc("POST /api/settings", func(w http.ResponseWriter, r *http.Request) {
+			if !on() {
+				http.NotFound(w, r)
+				return
+			}
 			if status, err := g.checkPost(r); err != nil {
 				writeError(w, status, err)
 				return

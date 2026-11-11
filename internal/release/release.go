@@ -117,6 +117,10 @@ type Checker struct {
 	client    *http.Client
 	log       *slog.Logger
 
+	// Enabled turns the lookups on and off while running (story #61); nil
+	// is always on.
+	Enabled func() bool
+
 	mu      sync.RWMutex
 	latest  Release
 	known   bool
@@ -143,14 +147,27 @@ func (c *Checker) Latest() (Release, bool) {
 	return c.latest, c.known
 }
 
-// Run checks now and then periodically, until ctx is cancelled.
+// Run checks now and then periodically, until ctx is cancelled. While
+// Enabled says no, it skips the lookups; turned on again, it looks up within
+// a minute.
 func (c *Checker) Run(ctx context.Context) {
+	var next time.Time // zero: look up as soon as enabled
 	for {
-		wait := checkEvery
-		if err := c.Check(ctx); err != nil {
-			wait = retryAfter
+		if c.enabled() {
+			if !time.Now().Before(next) {
+				wait := checkEvery
+				if err := c.Check(ctx); err != nil {
+					wait = retryAfter
+				}
+				next = time.Now().Add(wait)
+			}
+		} else {
+			next = time.Time{}
 		}
-		t := time.NewTimer(wait)
+		t := time.NewTimer(min(time.Minute, max(time.Until(next), time.Second)))
+		if !c.enabled() {
+			t.Reset(time.Minute)
+		}
 		select {
 		case <-ctx.Done():
 			t.Stop()
@@ -158,6 +175,23 @@ func (c *Checker) Run(ctx context.Context) {
 		case <-t.C:
 		}
 	}
+}
+
+func (c *Checker) enabled() bool { return c.Enabled == nil || c.Enabled() }
+
+// Gated is a Latest that knows nothing while On says no: the update check
+// turned off on the settings page hides the advice it gave (story #61).
+type Gated struct {
+	L  Latest
+	On func() bool
+}
+
+// Latest implements Latest.
+func (g Gated) Latest() (Release, bool) {
+	if g.L == nil || !g.On() {
+		return Release{}, false
+	}
+	return g.L.Latest()
 }
 
 // Check looks up the latest release once. A failure keeps the last known
