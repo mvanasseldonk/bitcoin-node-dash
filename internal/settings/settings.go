@@ -74,6 +74,8 @@ type Reader struct {
 	args func() []string
 	// started returns when bitcoind started, from /proc; zero when unknown.
 	started func() time.Time
+	// process identifies the running bitcoind, from /proc; "" when unknown.
+	process func() string
 
 	// edit is nil while editing is off.
 	edit *editor
@@ -81,13 +83,14 @@ type Reader struct {
 
 // New returns a Reader that finds bitcoind's command line in /proc.
 func New(confPath, dataDir string) *Reader {
-	return &Reader{ConfPath: confPath, DataDir: dataDir, args: bitcoindArgs, started: bitcoindStarted}
+	return &Reader{ConfPath: confPath, DataDir: dataDir, args: bitcoindArgs, started: bitcoindStarted, process: bitcoindProcess}
 }
 
 // WithArgs replaces bitcoind's command line, for the mock mode.
 func (r *Reader) WithArgs(args []string) *Reader {
 	r.args = func() []string { return args }
 	r.started = func() time.Time { return time.Time{} }
+	r.process = func() string { return "" }
 	return r
 }
 
@@ -220,7 +223,7 @@ func (r *Reader) ReadSettings(running *model.RunningSettings) *model.Settings {
 	}
 	if r.edit != nil {
 		out.Editable = true
-		if saved := r.edit.saved(r.bitcoindStarted(running)); saved != nil {
+		if saved := r.edit.saved(r.bitcoindStarted(running), r.bitcoindProcess()); saved != nil {
 			out.RestartNeeded = saved.RestartNeeded
 		}
 	}
@@ -239,6 +242,14 @@ func (r *Reader) bitcoindStarted(running *model.RunningSettings) time.Time {
 		return running.Started
 	}
 	return time.Time{}
+}
+
+// bitcoindProcess identifies the running bitcoind; "" when unknown.
+func (r *Reader) bitcoindProcess() string {
+	if r.process == nil {
+		return ""
+	}
+	return r.process()
 }
 
 // parse reads a configured value the way Bitcoin Core does. valid is false
@@ -575,46 +586,81 @@ const clockTicks = 100
 // bitcoindStarted returns when the running bitcoind started, from
 // /proc/<pid>/stat and the boot time in /proc/stat. Zero when unknown.
 func bitcoindStarted() time.Time {
-	dir := bitcoindPID()
+	_, stat, sys := bitcoindStat()
+	return startTime(stat, sys)
+}
+
+// bitcoindProcess identifies the running bitcoind by boot, process ID and
+// start time in clock ticks; "" when unknown. Unlike bitcoindStarted, which
+// is off by up to a second (the boot time is in whole seconds), it is exact:
+// a restart right after a save is seen.
+func bitcoindProcess() string {
+	dir, stat, sys := bitcoindStat()
+	return processID(filepath.Base(dir), stat, sys)
+}
+
+// bitcoindStat reads the running bitcoind's /proc/<pid>/stat and /proc/stat.
+func bitcoindStat() (dir string, stat, sys []byte) {
+	dir = bitcoindPID()
 	if dir == "" {
-		return time.Time{}
+		return "", nil, nil
 	}
 	stat, err := os.ReadFile(filepath.Join(dir, "stat"))
 	if err != nil {
-		return time.Time{}
+		return "", nil, nil
 	}
-	sys, err := os.ReadFile("/proc/stat")
+	sys, err = os.ReadFile("/proc/stat")
 	if err != nil {
-		return time.Time{}
+		return "", nil, nil
 	}
-	return startTime(stat, sys)
+	return dir, stat, sys
 }
 
 // startTime reads a process's start time from its /proc/<pid>/stat and the
 // boot time in /proc/stat. Zero when they can't be read.
 func startTime(stat, sys []byte) time.Time {
+	boot, ticks, ok := procTimes(stat, sys)
+	if !ok {
+		return time.Time{}
+	}
+	return time.Unix(boot, 0).Add(time.Duration(ticks) * time.Second / clockTicks)
+}
+
+// processID identifies process pid by boot time, pid and start time in
+// clock ticks, which no other process has. "" when they can't be read.
+func processID(pid string, stat, sys []byte) string {
+	boot, ticks, ok := procTimes(stat, sys)
+	if !ok || pid == "" {
+		return ""
+	}
+	return fmt.Sprintf("%d/%s/%d", boot, pid, ticks)
+}
+
+// procTimes reads the boot time from /proc/stat and a process's start time
+// in clock ticks since boot from its /proc/<pid>/stat.
+func procTimes(stat, sys []byte) (boot, ticks int64, ok bool) {
 	// The command name, in parentheses, may contain spaces: count from its end.
 	i := bytes.LastIndexByte(stat, ')')
 	if i < 0 {
-		return time.Time{}
+		return 0, 0, false
 	}
 	fields := strings.Fields(string(stat[i+1:]))
 	// Field 22 of stat is the start time; fields[0] is field 3.
 	if len(fields) < 20 {
-		return time.Time{}
+		return 0, 0, false
 	}
 	ticks, err := strconv.ParseInt(fields[19], 10, 64)
 	if err != nil {
-		return time.Time{}
+		return 0, 0, false
 	}
 	for _, line := range strings.Split(string(sys), "\n") {
 		if v, ok := strings.CutPrefix(line, "btime "); ok {
 			boot, err := strconv.ParseInt(strings.TrimSpace(v), 10, 64)
 			if err != nil {
-				return time.Time{}
+				return 0, 0, false
 			}
-			return time.Unix(boot, 0).Add(time.Duration(ticks) * time.Second / clockTicks)
+			return boot, ticks, true
 		}
 	}
-	return time.Time{}
+	return 0, 0, false
 }
