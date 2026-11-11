@@ -329,7 +329,12 @@ jobs:
       - name: Automatic updates
         run: |
           set -eu
-          sudo apt-get update -qq && sudo apt-get install -y -qq minisign >/dev/null
+          # minisign from its own release, not apt: the Ubuntu mirror on the
+          # runners isn't always reachable. Pinned to the checksum of 0.11.
+          curl -fsSLO https://github.com/jedisct1/minisign/releases/download/0.11/minisign-0.11-linux.tar.gz
+          echo 'f0a0954413df8531befed169e447a66da6868d79052ed7e892e50a4291af7ae0  minisign-0.11-linux.tar.gz' | sha256sum -c -
+          tar -xzf minisign-0.11-linux.tar.gz
+          sudo install -m 0755 minisign-linux/x86_64/minisign /usr/local/bin/minisign
           minisign -G -W -s ci.key -p ci.pub
           minisign -G -W -s other.key -p other.pub
           key=$(sed -n 2p ci.pub)
