@@ -14,7 +14,115 @@ Requires Bitcoin Core 23 or newer.
 
 ## Install
 
-### Docker (recommended)
+**Use the installer** when Bitcoin Core runs on Linux with systemd, as on most servers and VMs. It is one command,
+asks a few questions, and supports every option. [Docker](#docker) works too, with fewer options.
+
+**Using ChatGPT, Claude or another assistant?** Give it this link, and it can guide you step by step:
+[docs/install-with-ai.md](https://github.com/mvanasseldonk/bitcoin-node-dash/blob/main/docs/install-with-ai.md).
+
+### With the installer (recommended)
+
+Run this on the machine where Bitcoin Core runs, as a user that can use `sudo`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/mvanasseldonk/bitcoin-node-dash/main/install.sh | sh
+```
+
+The first time, in a terminal, it asks for a name for your node and whether to turn on three options:
+[node control](#node-control), [changing settings](#changing-settings) and [automatic updates](#automatic-updates).
+Enter keeps the default, which is "no" for all three. Then it:
+
+- finds the user that runs `bitcoind` and its data directory, and shows what it found;
+- downloads the latest release for your CPU (x86-64 or ARM64), checks it against `checksums.txt` and checks the
+  signature of `checksums.txt` (see [Signed releases](#signed-releases));
+- installs `/usr/local/bin/node-dash` and a systemd service that starts with your server;
+- prints the dashboard's address, the command to open the port if the ufw firewall is active, and which options
+  are on.
+
+Then open that address, e.g. `http://192.168.1.20:8080`, in a browser on your network.
+
+**Options** go after `sh -s --`. With options, it asks nothing:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/mvanasseldonk/bitcoin-node-dash/main/install.sh | sh -s -- --name "Satoshi's node" --control
+```
+
+| Option | What it does |
+|---|---|
+| `--name "My node"` | Your name for the node, at most 40 characters. `--name ""` goes back to "Node" |
+| `--control`, `--no-control` | [Node control](#node-control) on or off |
+| `--settings`, `--no-settings` | [Changing settings](#changing-settings) on or off |
+| `--auto-update`, `--no-auto-update` | [Automatic updates](#automatic-updates) on or off |
+| `--yes` | Ask nothing; what isn't given stays as it is |
+| `--check` | Change nothing; print a report to share when asking for help (see below) |
+| `--uninstall` | Remove node-dash |
+| `--help` | All options |
+
+Run the installer again with an option to change it later; the others stay as they are. Every option also works as
+an environment variable **before `sh`**, e.g. `| NODEDASH_CONTROL=1 sh` (not before `curl`: then `sh` doesn't get
+it). For special cases, also before `sh`: `VERSION=v0.2.0` for a specific release, and `NODEDASH_USER=bitcoin` and
+`BITCOIN_DATADIR=/path/to/.bitcoin` when the installer can't find `bitcoind`.
+
+**Something not working?** `--check` changes nothing and prints what the installer and a helper need to know: your
+system, where Bitcoin Core runs and whether its RPC answers, whether the dashboard runs, the options, and the
+firewall. It never shows passwords, keys or lines of `bitcoin.conf`, so you can paste it in an issue or a chat:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/mvanasseldonk/bitcoin-node-dash/main/install.sh | sh -s -- --check
+```
+
+**Update:** run the same command again. It does nothing when you are up to date. If you changed
+`/etc/systemd/system/node-dash.service` (or installed it by hand), it keeps your version. Or let it update itself:
+see [Automatic updates](#automatic-updates).
+
+**Uninstall** (your Bitcoin data is never touched):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/mvanasseldonk/bitcoin-node-dash/main/install.sh | sh -s -- --uninstall
+```
+
+Prefer to read a script before running it?
+
+```bash
+curl -fsSLO https://raw.githubusercontent.com/mvanasseldonk/bitcoin-node-dash/main/install.sh
+less install.sh
+sh install.sh
+```
+
+### By hand
+
+Download the archive for your platform from the [latest release](https://github.com/mvanasseldonk/bitcoin-node-dash/releases/latest),
+for example `node-dash_v0.2.0_linux_amd64.tar.gz`, check it with `sha256sum -c --ignore-missing checksums.txt`,
+and run it as the user that runs Bitcoin Core:
+
+```bash
+tar -xzf node-dash_*_linux_amd64.tar.gz
+cd node-dash_*_linux_amd64
+./node-dash
+```
+
+To run it as a service, install the binary and the included `node-dash.service` systemd unit
+(adjust `User`, `Group` and `BITCOIN_DATADIR` first):
+
+```bash
+sudo install -m 0755 node-dash /usr/local/bin/node-dash
+sudo cp node-dash.service /etc/systemd/system/
+sudo systemctl daemon-reload && sudo systemctl enable --now node-dash
+```
+
+### Docker
+
+For when you already run your services in Docker. The dashboard itself works the same, but some options don't
+work in a container:
+
+| | Installer | Docker |
+|---|---|---|
+| Status, tiles, details, peers, mempool | ✓ | ✓ |
+| [Node control](#node-control): stop, start and restart Bitcoin Core | ✓ | – |
+| [Changing settings](#changing-settings) of `bitcoin.conf` | ✓ | – (the data directory is mounted read-only) |
+| [Automatic updates](#automatic-updates) | ✓ | – (`docker compose pull`) |
+| Questions on the first install, `--check` | ✓ | – |
+| Your [own name](#name-and-icon) | `--name` | `NODEDASH_NAME` in `docker-compose.yml` |
 
 Run this on the machine where Bitcoin Core runs:
 
@@ -70,67 +178,6 @@ services:
 
 Bitcoin Core must accept RPC from the dashboard container (`rpcbind` / `rpcallowip`).
 
-### Without Docker (Linux with systemd)
-
-Run this on the machine where Bitcoin Core runs:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/mvanasseldonk/bitcoin-node-dash/main/install.sh | sh
-```
-
-The script:
-
-- finds the user that runs `bitcoind` and its data directory, and shows what it found;
-- downloads the latest release for your CPU (x86-64 or ARM64), checks it against `checksums.txt` and checks the
-  signature of `checksums.txt` (see [Signed releases](#signed-releases));
-- installs `/usr/local/bin/node-dash` and a systemd service that starts with your server;
-- prints the dashboard's address, and the command to open the port if the ufw firewall is active.
-
-It uses `sudo` for the install steps. Settings, put before `sh`:
-`VERSION=v0.2.0` for a specific release, `NODEDASH_USER=bitcoin` and `BITCOIN_DATADIR=/path/to/.bitcoin`
-when the script can't find `bitcoind`. Options: [node control](#node-control) (`NODEDASH_CONTROL=1`),
-[changing settings](#changing-settings) (`NODEDASH_SETTINGS=1`) and [automatic updates](#automatic-updates)
-(`NODEDASH_AUTO_UPDATE=1`).
-
-**Update:** run the same command again. It does nothing when you are up to date. If you changed
-`/etc/systemd/system/node-dash.service` (or installed it by hand), it keeps your version. Or let it update itself:
-see [Automatic updates](#automatic-updates).
-
-**Uninstall** (your Bitcoin data is never touched):
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/mvanasseldonk/bitcoin-node-dash/main/install.sh | sh -s -- --uninstall
-```
-
-Prefer to read a script before running it?
-
-```bash
-curl -fsSLO https://raw.githubusercontent.com/mvanasseldonk/bitcoin-node-dash/main/install.sh
-less install.sh
-sh install.sh
-```
-
-#### By hand
-
-Download the archive for your platform from the [latest release](https://github.com/mvanasseldonk/bitcoin-node-dash/releases/latest),
-for example `node-dash_v0.2.0_linux_amd64.tar.gz`, check it with `sha256sum -c --ignore-missing checksums.txt`,
-and run it as the user that runs Bitcoin Core:
-
-```bash
-tar -xzf node-dash_*_linux_amd64.tar.gz
-cd node-dash_*_linux_amd64
-./node-dash
-```
-
-To run it as a service, install the binary and the included `node-dash.service` systemd unit
-(adjust `User`, `Group` and `BITCOIN_DATADIR` first):
-
-```bash
-sudo install -m 0755 node-dash /usr/local/bin/node-dash
-sudo cp node-dash.service /etc/systemd/system/
-sudo systemctl daemon-reload && sudo systemctl enable --now node-dash
-```
-
 ## Configuration
 
 All settings are environment variables. The defaults work for a local Bitcoin Core, both with cookie
@@ -178,10 +225,10 @@ It needs Bitcoin Core as a systemd service and polkit (installed on Ubuntu Serve
 `sudo apt install polkitd`). Turn it on with the installer:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/mvanasseldonk/bitcoin-node-dash/main/install.sh | NODEDASH_CONTROL=1 sh
+curl -fsSL https://raw.githubusercontent.com/mvanasseldonk/bitcoin-node-dash/main/install.sh | sh -s -- --control
 ```
 
-`NODEDASH_CONTROL=0` turns it off again. Use `BITCOIN_SERVICE=…` when your service has another name.
+`--no-control` turns it off again. Use `BITCOIN_SERVICE=…` before `sh` when your service has another name.
 
 What the installer does:
 
@@ -218,7 +265,10 @@ How it works and why: [decision 0001](docs/decisions/0001-controlling-bitcoind.m
 
 ## Troubleshooting
 
-The dashboard shows **Unreachable** and its log (`docker logs node-dash`) tells you why:
+Installed with the installer? Start with `--check` (see [Install](#install)); it shows most problems at a glance.
+
+The dashboard shows **Unreachable** and its log (`journalctl -u node-dash`, or `docker logs node-dash`) tells you
+why:
 
 - **`read RPC cookie: permission denied`**: the dashboard runs as a user that can't read `.cookie`.
   Run it as the owner of the data directory (`--user` / `user:`), or, with Bitcoin Core 28+,
@@ -328,10 +378,10 @@ because the dashboard has no login.
 Turn it on with the installer:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/mvanasseldonk/bitcoin-node-dash/main/install.sh | NODEDASH_SETTINGS=1 sh
+curl -fsSL https://raw.githubusercontent.com/mvanasseldonk/bitcoin-node-dash/main/install.sh | sh -s -- --settings
 ```
 
-`NODEDASH_SETTINGS=0` turns it off again. Without it, there is no form, and the API refuses changes.
+`--no-settings` turns it off again. Without it, there is no form, and the API refuses changes.
 
 What the installer does:
 
@@ -377,7 +427,7 @@ e.g. "Attention · Node". In a background tab you can see that the node needs at
 
 - **Your own name:** set `NODEDASH_NAME`, e.g. `NODEDASH_NAME="Satoshi's node"`. It shows in the header, the tab title
   and under the icon on your phone's home screen.
-  - **Without Docker:** `sudo systemctl edit node-dash`, `Environment="NODEDASH_NAME=Satoshi's node"`.
+  - **Without Docker:** with the installer, `sh -s -- --name "Satoshi's node"` (see [Install](#install)).
   - **With Docker:** under `environment:` in `docker-compose.yml`.
 
   A name longer than 40 characters is refused at startup.
@@ -419,10 +469,10 @@ Without Docker, node-dash can install new releases by itself. It's **off by defa
 installer (v0.7.0 or newer):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/mvanasseldonk/bitcoin-node-dash/main/install.sh | NODEDASH_AUTO_UPDATE=1 sh
+curl -fsSL https://raw.githubusercontent.com/mvanasseldonk/bitcoin-node-dash/main/install.sh | sh -s -- --auto-update
 ```
 
-`NODEDASH_AUTO_UPDATE=0` turns it off again; `--uninstall` removes it too. The installer adds a systemd timer,
+`--no-auto-update` turns it off again; `--uninstall` removes it too. The installer adds a systemd timer,
 `node-dash-update.timer`, that runs `node-dash update` as root once a day, at a random time that stays the same on
 your server. It checks once right away. Each run:
 
