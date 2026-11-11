@@ -244,7 +244,9 @@ jobs:
           NODEDASH_CONTROL=1 sh install.sh | tee out.txt
           grep -q 'StateDirectory=node-dash-web' out.txt
           sudo mkdir -p /etc/systemd/system/node-dash.service.d
-          printf '%s\n' '[Service]' 'StateDirectory=node-dash-web' 'StateDirectoryMode=0700' |
+          # No start limit: this test restarts node-dash more often in a few
+          # seconds than systemd allows (5 in 10 s); a person doesn't.
+          printf '%s\n' '[Unit]' 'StartLimitIntervalSec=0' '[Service]' 'StateDirectory=node-dash-web' 'StateDirectoryMode=0700' |
             sudo tee /etc/systemd/system/node-dash.service.d/web.conf
           sudo systemctl daemon-reload
           sudo install -m 0755 node-dash /usr/local/bin/node-dash
@@ -284,9 +286,7 @@ jobs:
           wait_up
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/api/control)" = 200
 
-          # Peer addresses: an installer option with a drop-in. Five restarts
-          # in a few seconds hit systemd's start limit; a person doesn't.
-          sudo systemctl reset-failed node-dash
+          # Peer addresses: an installer option with a drop-in.
           sh install.sh --peer-addresses | tee out.txt
           grep -qx 'Environment=NODEDASH_PEER_ADDRESSES=1' /etc/systemd/system/node-dash.service.d/peers.conf
           grep -q 'peer addresses     on' out.txt
