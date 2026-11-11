@@ -573,6 +573,8 @@ function NumberInput({ id, label, value, unit, placeholder, invalid, disabled, o
 interface DialogProps {
   title: string
   lines: string[]
+  /** A command to run, shown after the lines. */
+  command?: string
   button: string
   danger?: boolean
   onYes: () => void
@@ -580,7 +582,7 @@ interface DialogProps {
 }
 
 /** A confirmation, as a sheet like node control's; Cancel has the focus. */
-function Dialog({ title, lines, button, danger, onYes, onNo }: DialogProps) {
+export function Dialog({ title, lines, command, button, danger, onYes, onNo }: DialogProps) {
   const cancel = useRef<HTMLButtonElement>(null)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onNo()
@@ -597,6 +599,7 @@ function Dialog({ title, lines, button, danger, onYes, onNo }: DialogProps) {
         {lines.map((l) => (
           <p key={l}>{l}</p>
         ))}
+        {command && <pre class="settings-command">{command}</pre>}
         <div class="sheet-actions">
           <button type="button" class={`btn ${danger ? 'btn-danger' : 'btn-primary'}`} onClick={onYes}>
             {button}

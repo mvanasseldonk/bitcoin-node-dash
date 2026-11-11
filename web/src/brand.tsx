@@ -1,17 +1,43 @@
 // The brand (story #35): the halo mark, the operator's name for their node,
 // and a favicon and page title that show the status.
 
-import { useEffect } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 
-/** NODEDASH_NAME, put in the page by the server; "Node" by default. */
-export const NAME =
-  document.querySelector<HTMLMetaElement>('meta[name="application-name"]')
-    ?.content || 'Node';
+const meta = (name: string) => document.querySelector<HTMLMetaElement>(`meta[name="${name}"]`)?.content
 
-/** Whether to show the link to Ancoro; NODEDASH_ANCORO=0 turns it off (story #44). */
-export const ANCORO =
-  document.querySelector<HTMLMetaElement>('meta[name="nodedash-ancoro"]')
-    ?.content !== 'off';
+/**
+ * NODEDASH_NAME, or the name set on the dashboard settings page (#61), put
+ * in the page by the server; "Node" by default. Read it with useName: a save
+ * on that page changes it without a reload.
+ */
+let name = meta('application-name') || 'Node'
+
+/** Whether to show the link to Ancoro (story #44); off with NODEDASH_ANCORO=0 or on the settings page. */
+let ancoro = meta('nodedash-ancoro') !== 'off'
+
+const listeners = new Set<() => void>()
+
+/** After a save on the dashboard settings page: the header, the tab title and the Ancoro line follow. */
+export function setBrand(next: { name: string; ancoro: boolean }) {
+  name = next.name || 'Node'
+  ancoro = next.ancoro
+  listeners.forEach((l) => l())
+}
+
+function useBrandValue<T>(read: () => T): T {
+  const [v, setV] = useState(read)
+  useEffect(() => {
+    const on = () => setV(read)
+    listeners.add(on)
+    return () => {
+      listeners.delete(on)
+    }
+  }, [])
+  return v
+}
+
+export const useName = () => useBrandValue(() => name)
+export const useAncoro = () => useBrandValue(() => ancoro)
 
 /**
  * A quiet line under the tiles pointing to Ancoro, a transaction checker.
@@ -82,9 +108,10 @@ const FAVICON: Record<Tone, string> = {
 
 /** Shows the status in the browser tab: the favicon's colour and the title. */
 export function useBrand(tone: Tone, label: string) {
+  const name = useName();
   useEffect(() => {
-    document.title = label ? `${label} · ${NAME}` : NAME;
-  }, [label]);
+    document.title = label ? `${label} · ${name}` : name;
+  }, [label, name]);
   useEffect(() => {
     const link = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
     if (link) link.href = `/icons/favicon-${FAVICON[tone]}.svg`;

@@ -413,7 +413,7 @@ function ServerRows({ srv }: { srv: Details['server'] | undefined }) {
 }
 
 /** The current route: the dashboard, or the details page at a section. */
-export function useRoute(): { page: 'dashboard' | 'peers' | 'settings' } | { page: 'details'; section: Section | null } {
+export function useRoute(): { page: 'dashboard' | 'peers' | 'settings' | 'web-settings' } | { page: 'details'; section: Section | null } {
   const read = () => location.hash
   const [hash, setHash] = useState(read())
   useEffect(() => {
@@ -423,6 +423,7 @@ export function useRoute(): { page: 'dashboard' | 'peers' | 'settings' } | { pag
   }, [])
   if (hash === '#/peers') return { page: 'peers' }
   if (hash === '#/settings') return { page: 'settings' }
+  if (hash === '#/dashboard') return { page: 'web-settings' }
   const m = hash.match(/^#\/details(?:\/(blockchain|network|mempool|settings|server|dashboard))?$/)
   if (!m) return { page: 'dashboard' }
   return { page: 'details', section: (m[1] as Section | undefined) ?? null }

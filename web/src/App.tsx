@@ -6,10 +6,11 @@ import { ControlSheet, PowerButton, useControl } from './control'
 import { DetailsPage, useRoute } from './details'
 import { PeersPage } from './peers'
 import { SettingsPage } from './settings'
-import { AncoroLine, ANCORO, Mark, NAME, useBrand, type Tone } from './brand'
+import { AncoroLine, Mark, useAncoro, useBrand, useName, type Tone } from './brand'
 import { useChangeKey } from './motion'
 import { ThemeSwitch } from './theme'
 import { UpdateLine } from './update'
+import { WebSettingsPage } from './websettings'
 
 const REFRESH_MS = 10_000
 /** While a node action runs, follow its progress closely. */
@@ -118,6 +119,8 @@ export function App() {
   const tone: Tone = serverDown ? 'unreachable' : progress ? 'busy' : stopped ? 'stopped' : level
   const label = serverDown ? LABELS.unreachable : progress ? progress.steps[progress.current] : stopped ? 'Stopped' : level === 'loading' ? '' : LABELS[level]
   useBrand(tone, label)
+  const name = useName()
+  const ancoro = useAncoro()
   // Motion (#41): one pulse per status change, one blink per fresh reading.
   const pulse = useChangeKey(tone === 'loading' ? null : tone)
   const blink = useChangeKey(snap?.updatedAt)
@@ -176,22 +179,24 @@ export function App() {
               <path d="M15 6l-6 6 6 6" />
             </svg>
             <Mark />
-            <span class="wordmark">{NAME}</span>
+            <span class="wordmark">{name}</span>
           </a>
         ) : (
           <span class="brand">
             <Mark />
-            <span class="wordmark">{NAME}</span>
+            <span class="wordmark">{name}</span>
           </span>
         )}
         <div class="header-end">
           {updated && (
-            <span class="updated">
+            // Next to the sliders button, a phone only has room for the dot (#61); the text stays for screen readers.
+            <span class={`updated ${snap?.webSettings ? 'updated-compact' : ''}`}>
               <span key={blink} class={`dot ${fresh ? 'dot-live' : ''} ${fresh && blink ? 'blink' : ''}`} aria-hidden="true" />
-              {fresh ? `Updated ${updated}` : `Last update ${updated}`}
+              <span class="updated-text">{fresh ? `Updated ${updated}` : `Last update ${updated}`}</span>
             </span>
           )}
           <ThemeSwitch />
+          {snap?.webSettings && <WebSettingsButton current={route.page === 'web-settings'} />}
           {control.enabled && <PowerButton onClick={() => setSheetOpen(true)} />}
         </div>
       </header>
@@ -203,6 +208,10 @@ export function App() {
       ) : route.page === 'peers' ? (
         <main class="main" key="peers">
           <PeersPage now={now} />
+        </main>
+      ) : route.page === 'web-settings' ? (
+        <main class="main" key="web-settings">
+          <WebSettingsPage />
         </main>
       ) : route.page === 'settings' ? (
         <main class="main" key="settings">
@@ -238,7 +247,7 @@ export function App() {
             </div>
           )}
           {snap?.dashboard?.available && <UpdateLine dash={snap.dashboard} />}
-          {ANCORO && <AncoroLine />}
+          {ancoro && <AncoroLine />}
         </main>
       )}
 
@@ -254,5 +263,21 @@ export function App() {
         />
       )}
     </div>
+  )
+}
+
+/** Sliders, not a gear, so it doesn't read as the node's settings (#61). */
+function WebSettingsButton({ current }: { current: boolean }) {
+  return (
+    <a class="header-btn" href="#/dashboard" aria-label="Dashboard settings" aria-current={current ? 'page' : undefined}>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M4 7h10" />
+        <path d="M18 7h2" />
+        <circle cx="16" cy="7" r="2" />
+        <path d="M4 17h2" />
+        <path d="M10 17h10" />
+        <circle cx="8" cy="17" r="2" />
+      </svg>
+    </a>
   )
 }
