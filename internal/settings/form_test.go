@@ -344,4 +344,54 @@ func TestStartTime(t *testing.T) {
 	if got := startTime([]byte("garbage"), sys); !got.IsZero() {
 		t.Errorf("garbage: %v", got)
 	}
+	if got := processID("4242", stat, sys); got != "1794300000/4242/123456" {
+		t.Errorf("process: %q", got)
+	}
+	if got := processID("4242", []byte("garbage"), sys); got != "" {
+		t.Errorf("process of garbage: %q", got)
+	}
+}
+
+// TestRestartSeen: the start time from /proc is off by up to a second, so
+// a restart right after a save is told by the process, not the time.
+func TestRestartSeen(t *testing.T) {
+	r, path, state := form(t, "dbcache=450\n")
+	process := "1794300000/4242/123456"
+	r.process = func() string { return process }
+	saveAt := time.Now()
+	d := details(saveAt.Add(-time.Hour), false)
+	f := r.Form(d)
+	if _, err := r.Save(d, f.Hash, map[string]int64{"dbcache": 1000}); err != nil {
+		t.Fatal(err)
+	}
+
+	// The same bitcoind, though its start time seems later: not restarted.
+	d.Running.Started = saveAt.Add(time.Minute)
+	if f := r.Form(d); f.Saved == nil {
+		t.Error("the same bitcoind must still need a restart")
+	}
+
+	// Restarted right away: its start time seems before the save.
+	process = "1794300000/4250/123500"
+	d.Running.Started = saveAt.Add(-500 * time.Millisecond)
+	if f := r.Form(d); f.Saved != nil {
+		t.Errorf("after the restart: %+v", f.Saved)
+	}
+	if s := r.ReadSettings(d.Running); s.RestartNeeded {
+		t.Error("the settings section must not ask for a restart either")
+	}
+
+	// The process of the save survives a restart of the dashboard.
+	r2 := reader(path, filepath.Dir(path))
+	r2.process = func() string { return process }
+	if err := r2.EnableEditing(state, "bitcoind.service", slog.New(slog.NewTextHandler(io.Discard, nil))); err != nil {
+		t.Fatal(err)
+	}
+	if f := r2.Form(d); f.Saved != nil {
+		t.Errorf("after restarting the dashboard: %+v", f.Saved)
+	}
+	process = "1794300000/4242/123456"
+	if f := r2.Form(d); f.Saved == nil {
+		t.Error("with the bitcoind of the save, a restart is still needed")
+	}
 }

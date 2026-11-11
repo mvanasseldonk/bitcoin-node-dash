@@ -73,9 +73,17 @@ type editor struct {
 
 	// saving allows one save at a time.
 	saving sync.Mutex
-	// mu guards last.
+	// mu guards last and process.
 	mu   sync.Mutex
 	last *model.SavedSettings
+	// process is the bitcoind that ran during the last save ("" unknown).
+	process string
+}
+
+// lastSaveFile is what last-save.json holds.
+type lastSaveFile struct {
+	model.SavedSettings
+	Process string `json:"process,omitempty"`
 }
 
 // EnableEditing turns the settings form on (NODEDASH_SETTINGS=1). stateDir
@@ -91,9 +99,10 @@ func (r *Reader) EnableEditing(stateDir, service string, log *slog.Logger) error
 	}
 	e := &editor{key: key, stateDir: stateDir, service: service, log: log, now: time.Now}
 	if b, err := os.ReadFile(filepath.Join(stateDir, lastSave)); err == nil {
-		var s model.SavedSettings
+		var s lastSaveFile
 		if json.Unmarshal(b, &s) == nil && !s.At.IsZero() {
-			e.last = &s
+			e.last = &s.SavedSettings
+			e.process = s.Process
 		}
 	}
 	r.edit = e
@@ -104,14 +113,21 @@ func (r *Reader) EnableEditing(stateDir, service string, log *slog.Logger) error
 func (r *Reader) Editable() bool { return r.edit != nil }
 
 // saved is the last save while bitcoind hasn't restarted since; nil after.
-// With bitcoind's start time unknown, a restart is still needed.
-func (e *editor) saved(started time.Time) *model.SavedSettings {
+// process is the running bitcoind: another one than during the save has
+// restarted. Without both, started tells: a start time is off by up to a
+// second, so it misses a restart right after the save. With neither known,
+// a restart is still needed.
+func (e *editor) saved(started time.Time, process string) *model.SavedSettings {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if e.last == nil {
 		return nil
 	}
-	if !started.IsZero() && started.After(e.last.At) {
+	if e.process != "" && process != "" {
+		if process != e.process {
+			return nil
+		}
+	} else if !started.IsZero() && started.After(e.last.At) {
 		return nil
 	}
 	s := *e.last
@@ -133,7 +149,7 @@ func (r *Reader) form(st *state, d *model.Details) *model.SettingsForm {
 	}
 	if r.edit != nil {
 		f.Service = r.edit.service
-		f.Saved = r.edit.saved(r.bitcoindStarted(d.Running))
+		f.Saved = r.edit.saved(r.bitcoindStarted(d.Running), r.bitcoindProcess())
 	}
 	switch {
 	case st.readErr != nil:
@@ -270,8 +286,10 @@ func (r *Reader) Save(d *model.Details, sum string, changes map[string]int64) (*
 	}
 	e.log.Info("settings saved: "+strings.Join(logged, ", "), "path", st.path, "backup", backup)
 
+	process := r.bitcoindProcess()
 	e.mu.Lock()
 	e.last = &model.SavedSettings{At: e.now().UTC(), Changes: list}
+	e.process = process
 	e.persist()
 	e.mu.Unlock()
 	return r.Form(d), nil
@@ -430,7 +448,7 @@ func (e *editor) backup(content []byte) (string, error) {
 // persist stores the last save, so "restart needed" survives a restart of
 // the dashboard.
 func (e *editor) persist() {
-	b, err := json.Marshal(e.last)
+	b, err := json.Marshal(lastSaveFile{SavedSettings: *e.last, Process: e.process})
 	if err != nil {
 		return
 	}
