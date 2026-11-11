@@ -462,8 +462,13 @@ clear_turned_off() {
 }
 
 # check_web_state says how to give a unit changed by hand the state directory
-# the dashboard settings page saves in.
+# the dashboard settings page saves in. A unit the installer wrote gets it
+# from the release.
 check_web_state() {
+	[ -e "$UNIT" ] || return 0
+	if [ -e "$UNIT_HASH" ] && [ "$(sha256sum <"$UNIT" | cut -d' ' -f1)" = "$(cat "$UNIT_HASH")" ]; then
+		return 0
+	fi
 	if ! systemctl show -p StateDirectory --value node-dash | tr ' ' '\n' | grep -qx node-dash-web; then
 		say "The dashboard settings page can't save yet: $UNIT was changed by hand. Add these"
 		say "two lines under [Service] (sudo systemctl edit node-dash), then restart node-dash:"
@@ -841,6 +846,7 @@ if [ "$CURRENT" = "$VERSION" ] && [ -e "$UNIT" ]; then
 	configure_auto_update
 	clear_turned_off
 	note_web_name
+	check_web_state
 	if [ "$NAME_CHANGED" = no ] && [ "$CONTROL_CHANGED" = no ] && [ "$SETTINGS_CHANGED" = no ] && [ "$PEERS_CHANGED" = no ] &&
 		[ "$AUTO_CHANGED" = no ] && [ "$CLEARED" = no ]; then
 		say "node-dash $VERSION is already installed and up to date; nothing to do"
@@ -1036,7 +1042,7 @@ configure_auto_update
 if [ "$NAME_CHANGED" = yes ] || [ "$CONTROL_CHANGED" = yes ] || [ "$SETTINGS_CHANGED" = yes ] || [ "$PEERS_CHANGED" = yes ] || [ "$AUTO_CHANGED" = yes ]; then
 	$SUDO systemctl daemon-reload
 fi
-[ "$WRITE_UNIT" = yes ] || check_web_state
+check_web_state
 clear_turned_off
 note_web_name
 $SUDO systemctl enable node-dash >/dev/null 2>&1
