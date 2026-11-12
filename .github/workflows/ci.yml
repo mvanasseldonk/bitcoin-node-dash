@@ -240,7 +240,10 @@ jobs:
             return 1
           }
           # The unit was changed above, so the installer keeps it, and says
-          # what the page needs.
+          # what the page needs. Releases from v0.13.1 on have the lines in
+          # their unit; take them out, as in a unit from before.
+          sudo sed -i '/^StateDirectory=node-dash-web$/d; /^StateDirectoryMode=0700$/d' /etc/systemd/system/node-dash.service
+          sudo systemctl daemon-reload
           NODEDASH_CONTROL=1 sh install.sh | tee out.txt
           grep -q 'StateDirectory=node-dash-web' out.txt
           sudo mkdir -p /etc/systemd/system/node-dash.service.d
