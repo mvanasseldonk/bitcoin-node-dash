@@ -33,7 +33,7 @@ C (#39) and A (#50), both opt-in. B only when it's missed.
 (`OnCalendar=daily`, `RandomizedDelaySec=1d`, `FixedRandomDelay=true`, `Persistent=true`). Written in Go, in the
 binary that is installed, so it is tested like the rest and needs no `jq` or `minisign` on the server.
 
-1. **Look up** the latest release on GitHub. Stop unless it is newer **and of the same major version**.
+1. **Look up** the latest release on GitHub. Stop unless it is newer **and of the same major version**, or the step from 0.x to 1.x (see the addendum).
 2. **Download** `checksums.txt`, `checksums.txt.minisig` and the archive for this CPU.
 3. **Verify**, before anything changes:
    - the signature, with the release key built into the **installed** binary;
@@ -72,7 +72,8 @@ Its unit is hardened as far as its job allows: `ProtectSystem=strict` with `Read
 - **What it doesn't:** a stolen signing key, or a stolen GitHub account that changes the release workflow and signs
   with it. The first install trusts `install.sh` from GitHub either way.
 - **Why only the same major version:** a major version may change the unit, the settings or the data the dashboard
-  needs. Those need the install command, and someone reading the release notes.
+  needs. Those need the install command, and someone reading the release notes. v1.0.0 is the one exception (see the
+  addendum).
 - **Why not in Docker:** a container can't replace its own image. `docker compose pull` or Watchtower do that.
 - **Losing the key:** a new key means a new release key in the binary. Servers with the old key refuse releases signed
   with the new one, so they need the install command once.
@@ -82,3 +83,17 @@ Its unit is hardened as far as its job allows: `ProtectSystem=strict` with `Read
 The CI job `install-script` runs it on a real systemd host, from a fake release server and with a throwaway key built
 into test binaries: turning it on updates v0.90.0 to v0.91.0; a v0.92.0 that doesn't start is rolled back to
 v0.91.0; a v0.93.0 signed with another key is refused; turning it off removes the timer, the service and the status.
+
+Since #74 it also updates v0.91.0 to v1.0.0 by itself, and then skips a v2.0.0. Unit tests cover 0.x → 1.0.0,
+1.x → 2.0.0, 0.x → 2.0.0 and an older major version.
+
+## Addendum: from 0.x to 1.0 (#74, 2026-11-12)
+
+The updater also takes the step from any 0.x to 1.x; every other new major version still needs the install command.
+
+- **Why:** under semver, 0.x promises nothing, and 1.0 is where the promise starts. v1.0.0 is v0.13.2 with a new
+  number: it changes none of the unit, the settings or the data. Skipping it would leave every server that updates
+  itself on 0.x, with a note to run the install command for nothing.
+- **Why a v0.13.2 first:** the check runs in the version that is installed. v0.13.1 refuses v1.0.0, so v0.13.2 brings
+  the exception, and v1.0.0 comes once the daily timers have installed it.
+- **What a major version means from 1.0 on:** the README's "Versioning" section.

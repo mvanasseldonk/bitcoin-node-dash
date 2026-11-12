@@ -509,8 +509,9 @@ curl -fsSL https://raw.githubusercontent.com/mvanasseldonk/bitcoin-node-dash/mai
 `node-dash-update.timer`, that runs `node-dash update` as root once a day, at a random time that stays the same on
 your server. It checks once right away. Each run:
 
-- **Only the same major version:** it installs v0.8.0 over v0.7.0, but not v1.0.0. A new major version needs the
-  install command, so you can read what changed first.
+- **Only the same major version:** it installs v1.2.0 over v1.1.0, but not v2.0.0. A new major version needs the
+  install command, so you can read what changed first. The one exception is v1.0.0: any 0.x updates to it by
+  itself, because 1.0 changes nothing you need to act on (see [Versioning](#versioning)).
 - **Checks the signature** of the release with the key built into the node-dash that is installed, never the new
   one, and the archive against `checksums.txt`. An unsigned or wrongly signed release is refused.
 - **Keeps the previous binary** in `/var/lib/node-dash`. When the new version doesn't answer within 30 seconds, it puts
@@ -540,6 +541,20 @@ sha256sum -c --ignore-missing checksums.txt
 ```
 
 The trusted comment names the release, e.g. "node-dash v0.7.0".
+
+### Versioning
+
+From v1.0.0 on, the version number says whether you need to do something:
+
+- **A new major version** (v2.0.0) needs you to act. It is the only kind that may remove or change the meaning of
+  an environment variable or installer option, change the API (`/api/...`) in a way that breaks a client, change
+  the systemd unit or the state files in a way only the installer can do, or need a newer Bitcoin Core. Automatic
+  updates skip it; its release notes say what to do.
+- **A minor version** (v1.1.0) adds things and may change a default, but everything you set keeps working.
+- **A patch** (v1.0.1) only fixes things.
+
+The Docker image follows the same numbers: `:1.0.0` is one release, `:1.0` gets its patches, `:1` everything up to
+the next major version, and `:latest` the newest release.
 
 ## Status rules
 

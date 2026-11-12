@@ -395,8 +395,23 @@ jobs:
           status | grep -q '"result": "refused"'
           test "$(node-dash version)" = v0.91.0
 
+          # From 0.x to 1.0.0 it goes by itself (story #74)...
+          build v1.0.0 one
+          publish v1.0.0 one
+          sudo systemctl start node-dash-update.service
+          status | grep -q '"result": "updated"'
+          test "$(node-dash version)" = v1.0.0
+          curl -fsS http://127.0.0.1:8080/healthz
+          # ...but not to the next major version.
+          build v2.0.0 two
+          publish v2.0.0 two
+          sudo systemctl start node-dash-update.service
+          status | grep -q '"result": "skipped"'
+          status | grep -q 'v2.0.0 is a new major version'
+          test "$(node-dash version)" = v1.0.0
+
           # Off again.
-          NODEDASH_AUTO_UPDATE=0 VERSION=v0.91.0 sh install.sh | tee out.txt
+          NODEDASH_AUTO_UPDATE=0 VERSION=v1.0.0 sh install.sh | tee out.txt
           grep -q 'Turning automatic updates off' out.txt
           test ! -e /etc/systemd/system/node-dash-update.timer
           test ! -e /etc/systemd/system/node-dash-update.service
