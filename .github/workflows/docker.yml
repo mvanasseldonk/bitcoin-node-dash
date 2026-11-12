@@ -2,7 +2,8 @@ name: Docker
 
 # Pull requests: build the image and smoke-test it in mock mode.
 # main:          also publish ghcr.io/<repo>:edge (linux/amd64 + linux/arm64).
-# Tags v*:       also publish :<version>, :<major>.<minor> and :latest.
+# Tags v*:       also publish :<version>, :<major>.<minor> and :latest, and
+#                :<major> from v1 on (never :0).
 
 on:
   push:
@@ -63,6 +64,7 @@ jobs:
             type=edge,branch=main
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}},enable=${{ !startsWith(github.ref, 'refs/tags/v0.') }}
 
       - name: Log in to GitHub Container Registry
         if: github.event_name != 'pull_request'

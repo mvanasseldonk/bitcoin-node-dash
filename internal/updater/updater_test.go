@@ -258,15 +258,48 @@ func TestRefuses(t *testing.T) {
 	}
 }
 
-func TestSkips(t *testing.T) {
+// TestFromZeroToOne: the one step to a new major version that goes by itself
+// (story #74).
+func TestFromZeroToOne(t *testing.T) {
 	s, key := newSigner(t, 1)
 	rel := &fakeRelease{files: map[string][]byte{}}
 	rel.publish(t, s, "v1.0.0")
+	h := newHost(t, key, rel, "v0.13.2")
 
-	h := newHost(t, key, rel, "v0.7.0")
-	if st := h.run(); st.Result != model.UpdateSkipped || st.To != "v1.0.0" || !strings.Contains(st.Message, "major version") {
-		t.Fatalf("major version: got %+v", st)
+	if st := h.run(); st.Result != model.UpdateUpdated || st.From != "v0.13.2" || st.To != "v1.0.0" {
+		t.Fatalf("got %+v", st)
 	}
+	if h.installed() != "v1.0.0" || h.restarts != 1 {
+		t.Fatalf("installed %s after %d restarts", h.installed(), h.restarts)
+	}
+}
+
+func TestSkips(t *testing.T) {
+	s, key := newSigner(t, 1)
+	for _, c := range []struct{ installed, latest string }{
+		{"v1.4.0", "v2.0.0"},  // from 1.x on, only the same major version
+		{"v0.13.2", "v2.0.0"}, // 0.x goes to 1.x, not further
+		{"v2.1.0", "v3.0.0"},
+	} {
+		rel := &fakeRelease{files: map[string][]byte{}}
+		rel.publish(t, s, c.latest)
+		h := newHost(t, key, rel, c.installed)
+		if st := h.run(); st.Result != model.UpdateSkipped || st.To != c.latest || !strings.Contains(st.Message, "major version") {
+			t.Fatalf("%s over %s: got %+v", c.latest, c.installed, st)
+		}
+		if h.installed() != c.installed || h.restarts != 0 {
+			t.Fatalf("%s over %s: a skipped update must not touch anything", c.latest, c.installed)
+		}
+	}
+
+	// An older major version is never newer.
+	rel := &fakeRelease{files: map[string][]byte{}}
+	rel.publish(t, s, "v1.9.0")
+	h := newHost(t, key, rel, "v2.0.0")
+	if st := h.run(); st.Result != model.UpdateCurrent || h.installed() != "v2.0.0" {
+		t.Fatalf("v1.9.0 over v2.0.0: got %+v", st)
+	}
+
 	h = newHost(t, key, rel, "dev")
 	if st := h.run(); st.Result != model.UpdateSkipped || !strings.Contains(st.Message, "local build") {
 		t.Fatalf("local build: got %+v", st)

@@ -6,7 +6,7 @@
 // privileges. The updater:
 //
 //  1. asks GitHub for the latest release, and stops unless it is newer and
-//     of the same major version;
+//     of the same major version, or the step from 0.x to 1.x (story #74);
 //  2. downloads checksums.txt, its minisign signature and the archive, and
 //     checks the signature with the key built into this binary, never the new
 //     one, and the archive against checksums.txt;
@@ -143,7 +143,7 @@ func update(ctx context.Context, c Config) model.AutoUpdate {
 		return st
 	}
 	st.To = tag
-	if latest.Major != own.Major {
+	if !installable(own, latest) {
 		st.Result, st.Message = model.UpdateSkipped, tag+" is a new major version: update with the install command"
 		return st
 	}
@@ -166,6 +166,16 @@ func update(ctx context.Context, c Config) model.AutoUpdate {
 	}
 	st.Result = model.UpdateUpdated
 	return st
+}
+
+// installable tells whether the updater may go from own to the newer latest
+// by itself: within the same major version, or the one step from 0.x to 1.x
+// (story #74). v1.0.0 changes nothing that needs the install command: it is
+// where the promise of the README's "Versioning" section starts. Any other
+// new major version may change the unit, the settings or the data, so it
+// needs the install command (decision 0002).
+func installable(own, latest release.Release) bool {
+	return latest.Major == own.Major || own.Major == 0 && latest.Major == 1
 }
 
 // fetchVerified downloads release tag into dir and checks it. It returns the
